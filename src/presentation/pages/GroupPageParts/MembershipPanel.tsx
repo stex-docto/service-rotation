@@ -16,10 +16,10 @@ interface MembershipPanelProps {
 }
 
 // Shared between the draft and open phases: the invite link, the creator's
-// only two membership controls (lock/unlock new joins, ban an existing
-// member), and the current user's own join/leave action. Voting itself is
-// handled elsewhere — this panel only ever touches `members`/`memberUids`
-// and `inviteOpen`.
+// membership controls (lock/unlock new joins, ban/unban a member), and the
+// current user's own join/leave action. Voting itself is handled elsewhere —
+// this panel only ever touches `members`/`memberUids`, `bannedMembers`/
+// `bannedUids`, and `inviteOpen`.
 export function MembershipPanel({
     group,
     isCreator,
@@ -30,18 +30,21 @@ export function MembershipPanel({
         joinGroupUseCase,
         leaveGroupUseCase,
         banMemberUseCase,
+        unbanMemberUseCase,
         closeInviteUseCase,
         reopenInviteUseCase
     } = useDependencies()
 
     const isMember = group.isMember(currentUser.id)
     const members = group.getMembers()
+    const bannedMembers = group.getBannedMembers()
 
     const [displayName, setDisplayName] = useState(currentUser.displayName)
     const [joining, setJoining] = useState(false)
     const [leaving, setLeaving] = useState(false)
     const [invitePending, setInvitePending] = useState(false)
     const [banningUserId, setBanningUserId] = useState<string | null>(null)
+    const [unbanningUserId, setUnbanningUserId] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
 
     async function join(event: FormEvent) {
@@ -97,6 +100,18 @@ export function MembershipPanel({
         }
     }
 
+    async function unban(userId: UserId) {
+        setUnbanningUserId(userId.value)
+        setError(null)
+        try {
+            await unbanMemberUseCase.execute({ groupId: group.id, userId })
+        } catch (err) {
+            setError(errorMessageFrom(err))
+        } finally {
+            setUnbanningUserId(null)
+        }
+    }
+
     return (
         <VStack gap={4} align="stretch" borderWidth="1px" borderRadius="md" shadow="sm" p={4}>
             <Heading size="sm">Membres ({members.length})</Heading>
@@ -134,6 +149,33 @@ export function MembershipPanel({
                             </>
                         )}
                     </Box>
+
+                    {bannedMembers.length > 0 && (
+                        <Box>
+                            <Text fontSize="xs" colorPalette="gray" mb={1}>
+                                Bannis — ne peuvent pas rejoindre à nouveau.
+                            </Text>
+                            <VStack align="stretch" gap={1}>
+                                {bannedMembers.map(member => (
+                                    <HStack key={member.userId.value} justify="space-between">
+                                        <Text fontSize="sm" colorPalette="gray">
+                                            {member.displayName}
+                                        </Text>
+                                        {group.inviteOpen && (
+                                            <Button
+                                                size="xs"
+                                                variant="ghost"
+                                                loading={unbanningUserId === member.userId.value}
+                                                onClick={() => unban(member.userId)}
+                                            >
+                                                Annuler le bannissement
+                                            </Button>
+                                        )}
+                                    </HStack>
+                                ))}
+                            </VStack>
+                        </Box>
+                    )}
                 </>
             )}
 

@@ -133,6 +133,23 @@ export class FirebaseGroupDatastore implements GroupRepository {
         })
     }
 
+    // A transaction, not save(): a ban can land within milliseconds of the
+    // target self-leaving or someone else joining — see join/leave above.
+    async ban(groupId: GroupId, userId: UserId): Promise<GroupEntity> {
+        const groupRef = doc(this.collection, groupId.value)
+
+        return runTransaction(this.firestore, async transaction => {
+            const snapshot = await transaction.get(groupRef)
+            if (!snapshot.exists()) {
+                throw new GroupNotFoundError()
+            }
+            const currentGroup = toGroupEntity(snapshot.data() as FirebaseGroupDocument)
+            const updatedGroup = currentGroup.ban(userId)
+            transaction.set(groupRef, toGroupDocument(updatedGroup))
+            return updatedGroup
+        })
+    }
+
     subscribe(id: GroupId, callback: (group: GroupEntity | null) => void): () => void {
         return onSnapshot(
             doc(this.collection, id.value),

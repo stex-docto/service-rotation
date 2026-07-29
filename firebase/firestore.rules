@@ -26,6 +26,16 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/groups/$(groupId)/votes/$(request.auth.uid)).data.locked == true;
       }
 
+      // Tolerate documents written before banning existed: a plain
+      // `resource.data.bannedUids` on one of those throws (missing map key)
+      // and denies the whole request, not just the ban-specific checks.
+      function existingBannedUids() {
+        return ('bannedUids' in resource.data) ? resource.data.bannedUids : [];
+      }
+      function existingBannedMembers() {
+        return ('bannedMembers' in resource.data) ? resource.data.bannedMembers : [];
+      }
+
       // Readable by any signed-in user who already knows its id, draft or
       // open — not gated on membership. This is deliberate, not a hole: the
       // id is a crypto.randomUUID() and groups are never listable by
@@ -50,44 +60,65 @@ service cloud.firestore {
         && request.resource.data.status == 'draft'
         && request.resource.data.members.size() == 0
         && request.resource.data.memberUids.size() == 0
-        && request.resource.data.inviteOpen == true;
+        && request.resource.data.inviteOpen == true
+        && request.resource.data.bannedMembers.size() == 0
+        && request.resource.data.bannedUids.size() == 0;
 
       allow update: if isSignedIn() && (
         // (a) Creator edits a draft's configuration freely — services,
         // name, rotations. Members may already exist by this point (joining
         // doesn't wait for voting to be enabled), so this clause touches
         // only configuration fields, never membership or the invite lock.
+        // bannedMembers/bannedUids are listed only to tolerate them
+        // "appearing" on a document written before banning existed (see
+        // existingBannedUids) — pinned equal to their prior value so this
+        // clause can never be used to sneak in an actual ban/unban.
         (
           resource.data.status == 'draft'
           && request.auth.uid == resource.data.createdBy
           && request.resource.data.status == 'draft'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-               ['name', 'services', 'rotationSlots', 'rotationMode']
+               ['name', 'services', 'rotationSlots', 'rotationMode', 'bannedMembers', 'bannedUids']
              )
+          && request.resource.data.bannedUids == existingBannedUids()
+          && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
         )
         ||
         // (b) Creator enables voting: freezes services/rotations and locks
         // the roster (inviteOpen -> false) in the same write — activating
         // voting is the default moment the member list stops moving.
         // Reversible afterward via clause (e), same as any other time.
+        // bannedMembers/bannedUids pinned unchanged — see (a).
         (
           resource.data.status == 'draft'
           && request.auth.uid == resource.data.createdBy
           && request.resource.data.status == 'open'
           && request.resource.data.inviteOpen == false
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'inviteOpen'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+               ['status', 'inviteOpen', 'bannedMembers', 'bannedUids']
+             )
+          && request.resource.data.bannedUids == existingBannedUids()
+          && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
         )
         ||
         // (c) Self-join: exactly your own uid, added once, invite must be
-        // open. Works in 'draft' or 'open' — no organizer approval, no need
-        // to wait for voting to be enabled. Checking that the new `members`
+        // open, and the uid must not be on the banned list — a banned
+        // member can't simply rejoin through this clause (see Group.join).
+        // Works in 'draft' or 'open' — no organizer approval, no need to
+        // wait for voting to be enabled. Checking that the new `members`
         // array is the old one with exactly one element appended, AND that
         // element's userId is the caller's own, rules out sneaking in
         // someone else's entry or tampering with an existing one under cover
-        // of a join.
+        // of a join. bannedMembers/bannedUids pinned unchanged — see (a) —
+        // so a joiner can't also ban/unban someone in the same write.
         (
           resource.data.inviteOpen == true
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberUids'])
+          && !(request.auth.uid in existingBannedUids())
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+               ['members', 'memberUids', 'bannedMembers', 'bannedUids']
+             )
+          && request.resource.data.bannedUids == existingBannedUids()
+          && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
           && !(request.auth.uid in resource.data.memberUids)
           && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
           && request.resource.data.members == resource.data.members.concat(
@@ -100,10 +131,15 @@ service cloud.firestore {
         // 'open', and regardless of the invite lock — that lock only stops
         // new joins. Blocked once your own vote is locked — permanent
         // membership from that point on is what keeps capacity math and
-        // "everyone's voted" meaningful; see CLAUDE.md.
+        // "everyone's voted" meaningful; see CLAUDE.md. bannedMembers/
+        // bannedUids pinned unchanged — see (a).
         (
           request.auth.uid in resource.data.memberUids
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberUids'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+               ['members', 'memberUids', 'bannedMembers', 'bannedUids']
+             )
+          && request.resource.data.bannedUids == existingBannedUids()
+          && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
           && !(request.auth.uid in request.resource.data.memberUids)
           && request.resource.data.memberUids == resource.data.memberUids.removeAll([request.auth.uid])
           && request.resource.data.members.size() == resource.data.members.size() - 1
@@ -113,9 +149,14 @@ service cloud.firestore {
         // (e) Creator locks the invite link — usable in 'draft' or 'open',
         // any number of times. It only ever stops new joins; it has no
         // effect on anyone's ability to leave, vote, or read votes.
+        // bannedMembers/bannedUids pinned unchanged — see (a).
         (
           request.auth.uid == resource.data.createdBy
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inviteOpen'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+               ['inviteOpen', 'bannedMembers', 'bannedUids']
+             )
+          && request.resource.data.bannedUids == existingBannedUids()
+          && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
           && resource.data.inviteOpen == true
           && request.resource.data.inviteOpen == false
         )
@@ -124,11 +165,16 @@ service cloud.firestore {
         // is enabled the roster is locked for good (see Group.reopenInvite):
         // letting someone join after other members have already started
         // grading would be unfair to whoever committed to the current
-        // member list first.
+        // member list first. bannedMembers/bannedUids pinned unchanged —
+        // see (a).
         (
           resource.data.status == 'draft'
           && request.auth.uid == resource.data.createdBy
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inviteOpen'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+               ['inviteOpen', 'bannedMembers', 'bannedUids']
+             )
+          && request.resource.data.bannedUids == existingBannedUids()
+          && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
           && resource.data.inviteOpen == false
           && request.resource.data.inviteOpen == true
         )
@@ -138,13 +184,39 @@ service cloud.firestore {
         // member's own vote lock — a moderation override, not something the
         // removed member could use to dodge an assignment. Checking that the
         // new memberUids has no id absent from the old one rules out this
-        // clause being used to sneak in a join disguised as a ban.
+        // clause being used to sneak in a join disguised as a ban. Also
+        // appends exactly one entry to bannedUids/bannedMembers in the same
+        // write, so a future self-join by that uid is rejected by clause (c)
+        // — see Group.ban. Not cross-validated against which specific uid
+        // was removed from memberUids: the creator already has unrestricted
+        // ban power over their own group, and the `members` check just below
+        // is equally loose (size-only, no content check either).
         (
           request.auth.uid == resource.data.createdBy
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberUids'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+               ['members', 'memberUids', 'bannedMembers', 'bannedUids']
+             )
           && request.resource.data.memberUids.size() == resource.data.memberUids.size() - 1
           && request.resource.data.memberUids.removeAll(resource.data.memberUids).size() == 0
           && request.resource.data.members.size() == resource.data.members.size() - 1
+          && request.resource.data.bannedUids.size() == existingBannedUids().size() + 1
+          && existingBannedUids().removeAll(request.resource.data.bannedUids).size() == 0
+          && request.resource.data.bannedMembers.size() == existingBannedMembers().size() + 1
+        )
+        ||
+        // (g) Creator undoes a ban — a misclick undo, not a way to
+        // relitigate a moderation decision after the fact: only available
+        // while the roster itself isn't locked (inviteOpen == true), the
+        // same window join() itself requires — see Group.unban. Does not
+        // touch members/memberUids: the unbanned uid still has to rejoin
+        // themselves through the normal self-service flow.
+        (
+          request.auth.uid == resource.data.createdBy
+          && resource.data.inviteOpen == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bannedMembers', 'bannedUids'])
+          && request.resource.data.bannedUids.size() == existingBannedUids().size() - 1
+          && request.resource.data.bannedUids.removeAll(existingBannedUids()).size() == 0
+          && request.resource.data.bannedMembers.size() == existingBannedMembers().size() - 1
         )
       );
 

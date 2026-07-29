@@ -20,6 +20,10 @@ export interface GroupRepository {
 
     leave(groupId: GroupId, userId: UserId): Promise<GroupEntity>
 
+    // Same race as join/leave — a ban and a self-leave/join can land within
+    // milliseconds of each other — so this is a transaction too, not save().
+    ban(groupId: GroupId, userId: UserId): Promise<GroupEntity>
+
     subscribe(id: GroupId, callback: (group: GroupEntity | null) => void): () => void
 
     delete(id: GroupId): Promise<void>

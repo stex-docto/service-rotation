@@ -38,6 +38,12 @@ export interface Group {
     // see closeInvite — but it's group configuration, not a standing
     // privilege over anyone's vote: locking it only stops new joins.
     inviteOpen: boolean
+    // Members forcibly removed by the creator (see ban/unban below) — kept
+    // as a MemberSet, not just uids, so a banned member's display name is
+    // still available to the creator (e.g. to undo a misclick). Checked by
+    // join() so a banned uid can't simply rejoin through the normal
+    // self-service flow.
+    bannedMembers: MemberSet
     createdBy: UserId
     createdDate: Date
 }
@@ -52,6 +58,7 @@ export class GroupEntity implements Group {
         public readonly rotationSlots: RotationSlot[],
         public readonly rotationMode: RotationMode,
         public readonly inviteOpen: boolean,
+        public readonly bannedMembers: MemberSet,
         public readonly createdBy: UserId,
         public readonly createdDate: Date
     ) {}
@@ -72,6 +79,7 @@ export class GroupEntity implements Group {
             [],
             'name',
             true,
+            new MemberSet(),
             createdBy,
             new Date()
         )
@@ -95,6 +103,7 @@ export class GroupEntity implements Group {
             this.rotationSlots,
             this.rotationMode,
             this.inviteOpen,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -126,6 +135,7 @@ export class GroupEntity implements Group {
             this.rotationSlots,
             this.rotationMode,
             this.inviteOpen,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -146,6 +156,7 @@ export class GroupEntity implements Group {
             this.rotationSlots,
             this.rotationMode,
             this.inviteOpen,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -166,6 +177,7 @@ export class GroupEntity implements Group {
             this.rotationSlots,
             this.rotationMode,
             this.inviteOpen,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -183,6 +195,7 @@ export class GroupEntity implements Group {
             [...this.rotationSlots, emptyRotationSlot()],
             this.rotationMode,
             this.inviteOpen,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -203,6 +216,7 @@ export class GroupEntity implements Group {
             this.rotationSlots.filter((_, i) => i !== index),
             this.rotationMode,
             this.inviteOpen,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -223,6 +237,7 @@ export class GroupEntity implements Group {
             this.rotationSlots.map((slot, i) => (i === index ? { ...slot, ...changes } : slot)),
             this.rotationMode,
             this.inviteOpen,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -242,6 +257,7 @@ export class GroupEntity implements Group {
             this.rotationSlots,
             mode,
             this.inviteOpen,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -274,6 +290,7 @@ export class GroupEntity implements Group {
             this.rotationSlots,
             this.rotationMode,
             false,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -290,6 +307,9 @@ export class GroupEntity implements Group {
         if (this.members.has(entry.userId)) {
             throw new Error('Already a member of this group')
         }
+        if (this.bannedMembers.has(entry.userId)) {
+            throw new Error('You have been removed from this group and cannot rejoin')
+        }
 
         return new GroupEntity(
             this.id,
@@ -300,6 +320,7 @@ export class GroupEntity implements Group {
             this.rotationSlots,
             this.rotationMode,
             this.inviteOpen,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -324,6 +345,61 @@ export class GroupEntity implements Group {
             this.rotationSlots,
             this.rotationMode,
             this.inviteOpen,
+            this.bannedMembers,
+            this.createdBy,
+            this.createdDate
+        )
+    }
+
+    // Creator-initiated forced removal — unlike leave(), also records the
+    // entry in bannedMembers so join() rejects any future self-rejoin
+    // attempt. Distinct from leave() precisely for that reason: a voluntary
+    // self-removal leaves no such trace.
+    ban(userId: UserId): GroupEntity {
+        const entry = this.members.find(userId)
+        if (!entry) {
+            throw new Error('Not a member of this group')
+        }
+
+        return new GroupEntity(
+            this.id,
+            this.name,
+            this.status,
+            this.services,
+            this.members.remove(userId),
+            this.rotationSlots,
+            this.rotationMode,
+            this.inviteOpen,
+            this.bannedMembers.add(entry),
+            this.createdBy,
+            this.createdDate
+        )
+    }
+
+    // The creator's misclick undo — reachable only while the roster itself
+    // isn't locked (inviteOpen). Once locked there's no point undoing a ban:
+    // the person couldn't rejoin anyway, and once voting has started
+    // inviteOpen can never reopen regardless (see reopenInvite). This does
+    // NOT restore membership — the unbanned uid still has to rejoin
+    // themselves through the normal self-service flow.
+    unban(userId: UserId): GroupEntity {
+        if (!this.inviteOpen) {
+            throw new Error('Cannot unban while the roster is locked')
+        }
+        if (!this.bannedMembers.has(userId)) {
+            throw new Error('This member is not banned')
+        }
+
+        return new GroupEntity(
+            this.id,
+            this.name,
+            this.status,
+            this.services,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            this.inviteOpen,
+            this.bannedMembers.remove(userId),
             this.createdBy,
             this.createdDate
         )
@@ -345,6 +421,7 @@ export class GroupEntity implements Group {
             this.rotationSlots,
             this.rotationMode,
             false,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -368,6 +445,7 @@ export class GroupEntity implements Group {
             this.rotationSlots,
             this.rotationMode,
             true,
+            this.bannedMembers,
             this.createdBy,
             this.createdDate
         )
@@ -381,11 +459,19 @@ export class GroupEntity implements Group {
         return this.members.toArray()
     }
 
+    getBannedMembers(): MemberEntry[] {
+        return this.bannedMembers.toArray()
+    }
+
     isCreator(userId: UserId): boolean {
         return this.createdBy.equals(userId)
     }
 
     isMember(userId: UserId): boolean {
         return this.members.has(userId)
+    }
+
+    isBanned(userId: UserId): boolean {
+        return this.bannedMembers.has(userId)
     }
 }

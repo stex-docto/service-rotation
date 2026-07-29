@@ -20,6 +20,8 @@ export interface BanMemberResult {
 // Creator-only forced removal, unlike LeaveGroupUseCase not gated on the
 // target's own vote lock — this is a moderation override, not a self-service
 // action the target could use to dodge an assignment they've already seen.
+// Unlike a self-leave, this also records the uid as banned (see Group.ban)
+// so they can't simply rejoin — see UnbanMemberUseCase for undoing that.
 // Any vote/voteStatus documents left behind are harmless: every reader
 // (ComputeResultUseCase, GetVotingProgressUseCase) filters by the group's
 // current member list, so an orphaned vote for someone no longer a member is
@@ -41,7 +43,7 @@ export class BanMemberUseCase {
             throw new PermissionError('Only the group creator can remove a member')
         }
 
-        const updatedGroup = await this.groupRepository.leave(command.groupId, command.userId)
+        const updatedGroup = await this.groupRepository.ban(command.groupId, command.userId)
 
         return { group: updatedGroup }
     }

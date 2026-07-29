@@ -22,6 +22,7 @@ import {
     SetGroupHiddenUseCase,
     SetRotationModeUseCase,
     SignInUseCase,
+    UnbanMemberUseCase,
     UpdateGroupSettingsUseCase,
     UpdateRotationSlotUseCase,
     UpdateServiceUseCase
@@ -66,6 +67,7 @@ function initDependencies(): DependencyContext {
     const joinGroupUseCase = new JoinGroupUseCase(groupRepository, signInUseCase)
     const leaveGroupUseCase = new LeaveGroupUseCase(groupRepository, voteRepository, signInUseCase)
     const banMemberUseCase = new BanMemberUseCase(groupRepository, signInUseCase)
+    const unbanMemberUseCase = new UnbanMemberUseCase(groupRepository, signInUseCase)
     const closeInviteUseCase = new CloseInviteUseCase(groupRepository, signInUseCase)
     const reopenInviteUseCase = new ReopenInviteUseCase(groupRepository, signInUseCase)
     const saveVoteDraftUseCase = new SaveVoteDraftUseCase(
@@ -107,6 +109,7 @@ function initDependencies(): DependencyContext {
         joinGroupUseCase,
         leaveGroupUseCase,
         banMemberUseCase,
+        unbanMemberUseCase,
         closeInviteUseCase,
         reopenInviteUseCase,
         saveVoteDraftUseCase,

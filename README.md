@@ -19,8 +19,10 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
   one at a time, either named freely or given a calendar date range, never
   both at once) are still being configured. Two standing controls cover
   membership while still a draft: lock/unlock the roster against new joins,
-  and ban an individual member (banning stays available at any time).
-  Enabling voting (freezing services/rotations) is the only other control,
+  and ban an individual member (banning stays available at any time, and a
+  banned member can't simply rejoin — the organizer can undo a ban, but only
+  while the roster isn't locked). Enabling voting (freezing services/rotations)
+  is the only other control,
   and locks the roster for good in the same step — for fairness, nobody can
   join after other members have already started grading. From then on
   there's no privileged access to anyone's grades, including the
@@ -114,7 +116,11 @@ version. Summary:
   being locked yet. The creator keeps one privilege regardless of phase —
   forcibly removing (banning) any member — but reopening joins is
   deliberately a one-way door once voting starts, for fairness between
-  members.
+  members. A ban is remembered (`bannedMembers`/`bannedUids`, not just a
+  removal): `Group.join` and the matching security rule clause both reject a
+  banned uid's self-rejoin attempt. The creator can undo a ban
+  (`Group.unban`) only while the roster itself isn't locked — the same
+  window a self-join needs anyway.
 - **Identity is uid-only, never email.** Membership, votes, and the invite
   mechanism never reference anyone's email address. The group's own id
   (`crypto.randomUUID()`, unguessable, and groups are never listable by
@@ -147,7 +153,9 @@ version. Summary:
   already locked. This is a deliberate moderation override, not something
   the removed member could trigger themselves: a banned member's vote (if
   any) is simply orphaned, never read again, since every computation and
-  progress count filters by the group's *current* member list.
+  progress count filters by the group's *current* member list. A banned uid
+  cannot rejoin through the invite link; the creator can undo the ban, but
+  only while the roster isn't locked.
 - A group with a permanent non-voter (joined, never locks) can only ever
   produce a provisional result excluding them — there is no deadline or
   override. Anyone can still compute a "result so far" at any time; nothing

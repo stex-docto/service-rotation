@@ -48,6 +48,10 @@ export type FirebaseGroupDocument = {
     rotations?: number
     rotationPeriods?: LegacyRotationPeriod[]
     inviteOpen: boolean
+    // Optional only for documents written before banning existed — see
+    // toGroupEntity's fallback. Always written from here on.
+    bannedMembers?: FirebaseMemberEntryDocument[]
+    bannedUids?: string[]
     createdBy: string
     createdDate: string
 }
@@ -77,6 +81,9 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
     const members: FirebaseMemberEntryDocument[] = group
         .getMembers()
         .map(entry => ({ userId: entry.userId.value, displayName: entry.displayName }))
+    const bannedMembers: FirebaseMemberEntryDocument[] = group
+        .getBannedMembers()
+        .map(entry => ({ userId: entry.userId.value, displayName: entry.displayName }))
 
     return {
         id: group.id.value,
@@ -88,6 +95,8 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
         rotationSlots: group.rotationSlots,
         rotationMode: group.rotationMode,
         inviteOpen: group.inviteOpen,
+        bannedMembers,
+        bannedUids: bannedMembers.map(entry => entry.userId),
         createdBy: group.createdBy.value,
         createdDate: group.createdDate.toISOString()
     }
@@ -129,6 +138,11 @@ export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
     const members = new MemberSet(
         data.members.map(entry => new MemberEntry(UserId.from(entry.userId), entry.displayName))
     )
+    const bannedMembers = new MemberSet(
+        (data.bannedMembers ?? []).map(
+            entry => new MemberEntry(UserId.from(entry.userId), entry.displayName)
+        )
+    )
 
     return new GroupEntity(
         GroupId.from(data.id),
@@ -139,6 +153,7 @@ export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
         deriveRotationSlots(data),
         data.rotationMode ?? 'name',
         data.inviteOpen,
+        bannedMembers,
         UserId.from(data.createdBy),
         new Date(data.createdDate)
     )

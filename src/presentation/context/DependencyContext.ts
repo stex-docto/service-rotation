@@ -21,6 +21,7 @@ import {
     SetGroupHiddenUseCase,
     SetRotationModeUseCase,
     SignInUseCase,
+    UnbanMemberUseCase,
     UpdateGroupSettingsUseCase,
     UpdateRotationSlotUseCase,
     UpdateServiceUseCase
@@ -41,6 +42,7 @@ export interface DependencyContext {
     joinGroupUseCase: JoinGroupUseCase
     leaveGroupUseCase: LeaveGroupUseCase
     banMemberUseCase: BanMemberUseCase
+    unbanMemberUseCase: UnbanMemberUseCase
     closeInviteUseCase: CloseInviteUseCase
     reopenInviteUseCase: ReopenInviteUseCase
     saveVoteDraftUseCase: SaveVoteDraftUseCase
