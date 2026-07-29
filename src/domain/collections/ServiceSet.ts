@@ -38,11 +38,13 @@ export class ServiceSet {
         return this.services.has(serviceId.value)
     }
 
+    // Always sorted by sortOrder, regardless of Map insertion order — see
+    // Service.ts for why that field exists at all.
     toArray(): ServiceEntity[] {
-        return Array.from(this.services.values())
+        return Array.from(this.services.values()).sort((a, b) => a.sortOrder - b.sortOrder)
     }
 
     [Symbol.iterator](): Iterator<ServiceEntity> {
-        return this.services.values()
+        return this.toArray()[Symbol.iterator]()
     }
 }

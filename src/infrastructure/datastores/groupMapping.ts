@@ -17,6 +17,9 @@ export type FirebaseServiceDocument = {
     name: string
     description: string
     capacity: number
+    // Optional only for documents written before this field existed — see
+    // Service.ts. Always written from here on.
+    sortOrder?: number
 }
 
 export type FirebaseMemberEntryDocument = {
@@ -60,7 +63,8 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
             id: service.id.value,
             name: service.name,
             description: service.description,
-            capacity: service.capacity
+            capacity: service.capacity,
+            sortOrder: service.sortOrder
         }
     }
 
@@ -116,7 +120,8 @@ export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
                     ServiceId.from(service.id),
                     service.name,
                     service.description,
-                    service.capacity
+                    service.capacity,
+                    service.sortOrder ?? 0
                 )
         )
     )

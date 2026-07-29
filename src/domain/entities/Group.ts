@@ -100,14 +100,28 @@ export class GroupEntity implements Group {
         )
     }
 
+    // Stamps sortOrder as one past the current maximum — the only place
+    // that knows it, since it depends on every existing service, not just
+    // the new one. Any sortOrder the caller passed in is discarded.
     addService(service: ServiceEntity): GroupEntity {
         this.requireDraft('add a service')
+
+        const maxOrder = this.services
+            .toArray()
+            .reduce((max, existing) => Math.max(max, existing.sortOrder), -1)
+        const orderedService = new ServiceEntity(
+            service.id,
+            service.name,
+            service.description,
+            service.capacity,
+            maxOrder + 1
+        )
 
         return new GroupEntity(
             this.id,
             this.name,
             this.status,
-            this.services.add(service),
+            this.services.add(orderedService),
             this.members,
             this.rotationSlots,
             this.rotationMode,
