@@ -110,13 +110,27 @@ service cloud.firestore {
           && !ownVoteIsLocked()
         )
         ||
-        // (e) Creator locks/unlocks the invite link — usable in 'draft' or
-        // 'open', any number of times. It only ever stops or allows new
-        // joins; it has no effect on anyone's ability to leave, vote, or
-        // read votes.
+        // (e) Creator locks the invite link — usable in 'draft' or 'open',
+        // any number of times. It only ever stops new joins; it has no
+        // effect on anyone's ability to leave, vote, or read votes.
         (
           request.auth.uid == resource.data.createdBy
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inviteOpen'])
+          && resource.data.inviteOpen == true
+          && request.resource.data.inviteOpen == false
+        )
+        ||
+        // (e2) Creator reopens the invite link — 'draft' only. Once voting
+        // is enabled the roster is locked for good (see Group.reopenInvite):
+        // letting someone join after other members have already started
+        // grading would be unfair to whoever committed to the current
+        // member list first.
+        (
+          resource.data.status == 'draft'
+          && request.auth.uid == resource.data.createdBy
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inviteOpen'])
+          && resource.data.inviteOpen == false
+          && request.resource.data.inviteOpen == true
         )
         ||
         // (f) Creator bans a member: forced removal of exactly one existing

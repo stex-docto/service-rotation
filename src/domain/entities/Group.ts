@@ -319,8 +319,8 @@ export class GroupEntity implements Group {
     // from growing further. Gates joining only — a member can still leave
     // (see the vote-lock check on leave above) and the creator can still ban
     // regardless. Usable in 'draft' or 'open': locking membership is
-    // independent of whether voting has been enabled. Reversible — see
-    // reopenInvite.
+    // independent of whether voting has been enabled. Reversible via
+    // reopenInvite — but only while still 'draft', see there.
     closeInvite(): GroupEntity {
         return new GroupEntity(
             this.id,
@@ -336,7 +336,15 @@ export class GroupEntity implements Group {
         )
     }
 
+    // Draft-only, unlike closeInvite: once voting is enabled the roster is
+    // locked for good (open() already forces inviteOpen false), so nobody
+    // can join after other members have started grading — new joins mid-
+    // vote would be unfair to whoever already committed to the current
+    // member list. There is deliberately no way back to true past this
+    // point.
     reopenInvite(): GroupEntity {
+        this.requireDraft('reopen the invite')
+
         return new GroupEntity(
             this.id,
             this.name,

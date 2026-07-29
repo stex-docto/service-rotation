@@ -18,11 +18,13 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
   join from that moment, even while services and rotations (added/removed
   one at a time, either named freely or given a calendar date range, never
   both at once) are still being configured. Two standing controls cover
-  membership: lock/unlock the roster against new joins, and ban an
-  individual member. Enabling voting (freezing services/rotations) is the
-  only other control, and locks the roster too by default — reopen it
-  afterward if latecomers still need to join. From then on there's no
-  privileged access to anyone's grades, including the organizer's own.
+  membership while still a draft: lock/unlock the roster against new joins,
+  and ban an individual member (banning stays available at any time).
+  Enabling voting (freezing services/rotations) is the only other control,
+  and locks the roster for good in the same step — for fairness, nobody can
+  join after other members have already started grading. From then on
+  there's no privileged access to anyone's grades, including the
+  organizer's own.
 - **Interns**: sign in with Google, open the link, join with a display name
   (no pre-registration, no need to wait for voting to be enabled), grade
   every service on a 4-level scale once voting is enabled, save the draft as
@@ -104,13 +106,15 @@ version. Summary:
 
 - **Lifecycle**: `groups/{groupId}` moves `draft → open`, where `open` means
   *voting enabled* — services and rotations freeze at that point, forever,
-  and `inviteOpen` flips to `false` in the same write (see `Group.open`).
-  Outside of that one automatic flip, membership is independent of status:
-  joining and leaving are self-service in either phase, gated only by
-  `inviteOpen` (the creator's roster lock, toggleable in draft or open, any
-  number of times) and, for leaving, the member's own vote not being locked
-  yet. The creator keeps two standing privileges regardless of phase:
-  toggling `inviteOpen`, and forcibly removing (banning) any member.
+  and `inviteOpen` flips to `false` in the same write (see `Group.open`) and
+  can never flip back: `reopenInvite` only works in `draft`. Outside of that,
+  membership is independent of status while still a draft: joining and
+  leaving are self-service, gated only by `inviteOpen` (freely toggleable by
+  the creator up to that point) and, for leaving, the member's own vote not
+  being locked yet. The creator keeps one privilege regardless of phase —
+  forcibly removing (banning) any member — but reopening joins is
+  deliberately a one-way door once voting starts, for fairness between
+  members.
 - **Identity is uid-only, never email.** Membership, votes, and the invite
   mechanism never reference anyone's email address. The group's own id
   (`crypto.randomUUID()`, unguessable, and groups are never listable by

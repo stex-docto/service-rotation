@@ -108,22 +108,31 @@ export function MembershipPanel({
                     <ShareLink groupId={group.id.value} />
 
                     <Box>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            colorPalette={group.inviteOpen ? 'orange' : 'blue'}
-                            onClick={toggleInvite}
-                            loading={invitePending}
-                        >
-                            {group.inviteOpen
-                                ? 'Verrouiller les membres'
-                                : 'Rouvrir aux nouveaux membres'}
-                        </Button>
-                        <Text fontSize="xs" colorPalette="gray" mt={2}>
-                            {group.inviteOpen
-                                ? "Tant que c'est ouvert, quiconque a le lien peut rejoindre le groupe."
-                                : 'Plus personne ne peut rejoindre le groupe avec ce lien.'}
-                        </Text>
+                        {group.status === 'open' && !group.inviteOpen ? (
+                            <Text fontSize="xs" colorPalette="gray">
+                                Les membres sont verrouillés définitivement depuis l'activation du
+                                vote — pour l'équité, plus personne ne peut rejoindre désormais.
+                            </Text>
+                        ) : (
+                            <>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    colorPalette={group.inviteOpen ? 'orange' : 'blue'}
+                                    onClick={toggleInvite}
+                                    loading={invitePending}
+                                >
+                                    {group.inviteOpen
+                                        ? 'Verrouiller les membres'
+                                        : 'Rouvrir aux nouveaux membres'}
+                                </Button>
+                                <Text fontSize="xs" colorPalette="gray" mt={2}>
+                                    {group.inviteOpen
+                                        ? "Tant que c'est ouvert, quiconque a le lien peut rejoindre le groupe."
+                                        : 'Plus personne ne peut rejoindre le groupe avec ce lien.'}
+                                </Text>
+                            </>
+                        )}
                     </Box>
 
                     {members.length > 0 && (
