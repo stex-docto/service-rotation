@@ -47,6 +47,10 @@ export type FirebaseGroupDocument = {
     // fallback. Never written by this version of the app.
     rotations?: number
     rotationPeriods?: LegacyRotationPeriod[]
+    // Optional only for documents written before this setting existed — see
+    // toGroupEntity's fallback (defaults to false). Always written from here
+    // on.
+    allowRepeatedServices?: boolean
     inviteOpen: boolean
     // Optional only for documents written before banning existed — see
     // toGroupEntity's fallback. Always written from here on.
@@ -94,6 +98,7 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
         memberUids: members.map(entry => entry.userId),
         rotationSlots: group.rotationSlots,
         rotationMode: group.rotationMode,
+        allowRepeatedServices: group.allowRepeatedServices,
         inviteOpen: group.inviteOpen,
         bannedMembers,
         bannedUids: bannedMembers.map(entry => entry.userId),
@@ -152,6 +157,7 @@ export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
         members,
         deriveRotationSlots(data),
         data.rotationMode ?? 'name',
+        data.allowRepeatedServices ?? false,
         data.inviteOpen,
         bannedMembers,
         UserId.from(data.createdBy),

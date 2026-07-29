@@ -89,18 +89,24 @@ stay 2-space with semicolons, outside Prettier's glob.
 ## Testing
 
 `src/domain/matching/*.test.ts` is the real test suite — determinism, every
-student gets `k` distinct services, capacity never exceeded, a brute-force
-oracle confirming true minimax optimality on small random instances, one
-hand-verified golden case, and a genuinely infeasible instance that naive
-arithmetic checks would miss (see the comments in `assign.test.ts` for why
-that specific instance, not an arbitrary one, is used). Property tests use a
-seeded `mulberry32` PRNG, never `Math.random()`, so failures reproduce.
+student gets `k` services (distinct unless `allowRepeatedServices` is on —
+see below), capacity never exceeded, a brute-force oracle confirming true
+minimax optimality on small random instances, one hand-verified golden case,
+and a genuinely infeasible instance that naive arithmetic checks would miss
+(see the comments in `assign.test.ts` for why that specific instance, not an
+arbitrary one, is used). Property tests use a seeded `mulberry32` PRNG, never
+`Math.random()`, so failures reproduce.
 
 Grades are a 4-level scale (`GradeLevel`: Excellent/Bien/Indifferent/
 Passable, costs 0..3) with no hard exclusion — every grade is assignable, so
 there is no rejection concept, no `maxRejections`, and no submit-time
-feasibility preflight any more. `checkStructuralFeasibility` only checks
-`services.length >= rotations`; real capacity infeasibility is discovered by
+feasibility preflight any more. `checkStructuralFeasibility` checks
+`services.length >= rotations` unless the group's `allowRepeatedServices` is
+on, in which case only `services.length > 0` is required — see
+`MatchingInput.allowRepeatedServices` and `buildNetwork`'s
+`perStudentServiceCap` in `assign.ts` for how a repeat is capped (nothing
+beyond `rotations` itself — a spread-forcing cap was tried and rejected, see
+that comment for why). Real capacity infeasibility is discovered by
 `computeAssignment` itself, at compute time, over whichever votes are
 currently readable.
 

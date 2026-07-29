@@ -30,6 +30,15 @@
 // "0,1,2,3" — each generated grade is drawn uniformly from this list):
 //   -e STRESS_WEIGHTS="-1,1,2,4"
 //
+// STRESS_ALLOW_REPEATED_SERVICES ("1"/"true", default off) turns on
+// MatchingInput.allowRepeatedServices for every generated instance. Combine
+// with a services range below the rotations range to specifically stress
+// the repeat-service path (services.length < rotations), e.g. to compare
+// the infeasibility rate before/after:
+//   -e STRESS_TRIALS=2000 -e STRESS_MIN_SERVICES=1 -e STRESS_MAX_SERVICES=3 \
+//   -e STRESS_MIN_ROTATIONS=4 -e STRESS_MAX_ROTATIONS=8 \
+//   -e STRESS_ALLOW_REPEATED_SERVICES=1
+//
 // IMPORTANT: MIN_ACCEPTABLE_COST/MAX_ACCEPTABLE_COST in types.ts are still
 // hardcoded to 0/3 and are NOT derived from STRESS_WEIGHTS — that's
 // deliberate, not an oversight. Pointing this at an out-of-range scale
@@ -77,6 +86,12 @@ function pickWeight(rng: () => number, weights: number[]): number {
     return weights[Math.floor(rng() * weights.length)]
 }
 
+function envBool(name: string, fallback: boolean): boolean {
+    const raw = process.env[name]
+    if (!raw) return fallback
+    return raw === '1' || raw.toLowerCase() === 'true'
+}
+
 const config = {
     trials: envInt('STRESS_TRIALS', 0),
     seed: envInt('STRESS_SEED', 1),
@@ -88,7 +103,12 @@ const config = {
     maxCapacity: envInt('STRESS_MAX_CAPACITY', 6),
     minRotations: envInt('STRESS_MIN_ROTATIONS', 2),
     maxRotations: envInt('STRESS_MAX_ROTATIONS', 5),
-    weights: envWeights('STRESS_WEIGHTS', [0, 1, 2, 3])
+    weights: envWeights('STRESS_WEIGHTS', [0, 1, 2, 3]),
+    // Off by default — matches computeAssignment's own default and keeps
+    // this load test's existing baseline behaviour unchanged unless someone
+    // explicitly opts in, e.g. to stress serviceCount < rotations ranges
+    // (see the module comment for an example invocation).
+    allowRepeatedServices: envBool('STRESS_ALLOW_REPEATED_SERVICES', false)
 }
 
 function generateRandomInput(rng: () => number): MatchingInput {
@@ -109,7 +129,13 @@ function generateRandomInput(rng: () => number): MatchingInput {
         )
     }))
 
-    return { rotations, services, students, lotteryOrder }
+    return {
+        rotations,
+        services,
+        students,
+        lotteryOrder,
+        allowRepeatedServices: config.allowRepeatedServices
+    }
 }
 
 function checkInvariants(input: MatchingInput, result: ReturnType<typeof computeAssignment>): void {
@@ -122,7 +148,9 @@ function checkInvariants(input: MatchingInput, result: ReturnType<typeof compute
 
     for (const assignment of result.assignments) {
         expect(assignment.rotationServiceIds).toHaveLength(input.rotations)
-        expect(new Set(assignment.rotationServiceIds).size).toBe(input.rotations)
+        if (!input.allowRepeatedServices) {
+            expect(new Set(assignment.rotationServiceIds).size).toBe(input.rotations)
+        }
 
         const grades = gradesByStudent.get(assignment.studentId) as Map<string, number>
         for (const serviceId of assignment.rotationServiceIds) {

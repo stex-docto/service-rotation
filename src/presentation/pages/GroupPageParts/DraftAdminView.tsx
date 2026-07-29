@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+    Alert,
     Box,
     Button,
     DatePicker,
@@ -12,6 +13,7 @@ import {
     NumberInput,
     Portal,
     Spinner,
+    Switch,
     Text,
     VStack
 } from '@chakra-ui/react'
@@ -63,6 +65,14 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
     // actions instead, mirroring how services are added/removed.
     const [rotationSlots, setRotationSlots] = useState<RotationSlot[]>(group.rotationSlots)
     const rotationSlotTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
+
+    const [allowRepeatedServices, setAllowRepeatedServices] = useState(group.allowRepeatedServices)
+    // True once there are fewer services than rotations and repeats aren't
+    // allowed to fill the gap — the group can't open like this (see
+    // Group.open), so the creator needs to add a service, remove a rotation,
+    // or flip the switch above.
+    const servicesShortfall =
+        !allowRepeatedServices && rotationSlots.length > 0 && services.length < rotationSlots.length
 
     async function run(action: () => Promise<unknown>) {
         setBusy(true)
@@ -213,6 +223,13 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
 
     async function changeRotationMode(mode: RotationMode) {
         await run(() => setRotationModeUseCase.execute({ groupId: group.id, mode }))
+    }
+
+    async function changeAllowRepeatedServices(value: boolean) {
+        setAllowRepeatedServices(value)
+        await run(() =>
+            updateGroupSettingsUseCase.execute({ groupId: group.id, allowRepeatedServices: value })
+        )
     }
 
     async function openGroup() {
@@ -523,7 +540,33 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                         <Text colorPalette="gray">Aucun service pour l'instant.</Text>
                     )}
                 </VStack>
+
+                <Switch.Root
+                    checked={allowRepeatedServices}
+                    onCheckedChange={details => changeAllowRepeatedServices(details.checked)}
+                >
+                    <Switch.HiddenInput />
+                    <Switch.Control>
+                        <Switch.Thumb />
+                    </Switch.Control>
+                    <Switch.Label>Autoriser un même service sur plusieurs rotations</Switch.Label>
+                </Switch.Root>
             </Box>
+
+            {servicesShortfall && (
+                <Alert.Root status="error">
+                    <Alert.Indicator />
+                    <Alert.Content>
+                        <Alert.Title>Pas assez de services pour couvrir les rotations</Alert.Title>
+                        <Alert.Description>
+                            Il y a {rotationSlots.length} rotation
+                            {rotationSlots.length > 1 ? 's' : ''} mais seulement {services.length}{' '}
+                            service{services.length > 1 ? 's' : ''}. Ajoutez un service, retirez une
+                            rotation, ou autorisez la répétition d'un même service ci-dessus.
+                        </Alert.Description>
+                    </Alert.Content>
+                </Alert.Root>
+            )}
 
             <Box borderWidth="1px" borderColor="blue.300" borderRadius="md" shadow="sm" p={4}>
                 <Heading size="sm" mb={2}>
@@ -538,7 +581,9 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                     colorPalette="blue"
                     onClick={openGroup}
                     loading={busy}
-                    disabled={services.length === 0 || rotationSlots.length === 0}
+                    disabled={
+                        services.length === 0 || rotationSlots.length === 0 || servicesShortfall
+                    }
                 >
                     Activer la notation
                 </Button>

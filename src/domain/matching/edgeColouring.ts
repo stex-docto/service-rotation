@@ -17,8 +17,10 @@ import type { ServiceCapacity } from './types'
 //     the minimal copy count (rather than always capacity_j) keeps the
 //     padding step below small and avoids manufacturing large numbers of
 //     permanently-empty copies for generously-sized services.
-//   - Every student has degree exactly k (their k distinct chosen services,
-//     each mapped to one specific copy). Every copy has degree <= k.
+//   - Every student has degree exactly k (their k chosen service visits —
+//     usually distinct, but a service may repeat when phase 1 allowed it,
+//     see assign.ts's allowRepeatedServices — each mapped to one specific
+//     copy). Every copy has degree <= k.
 //   - Pad the graph with dummy student nodes (never dummy copies — see the
 //     note below) so it becomes EXACTLY k-regular, then repeatedly extract a
 //     perfect matching and remove it. A perfect matching touches every node
@@ -113,9 +115,11 @@ export function scheduleRotations(
 
     // Adjacency is a multigraph: adjacency[left].get(copy) = edge multiplicity
     // (how many rounds this pairing can still be used for). Real student
-    // edges are always multiplicity 1 (their assigned services, and hence
-    // copies, are always distinct). Dummy padding edges may have multiplicity
-    // > 1 — see the note above on why that's fine.
+    // edges are usually multiplicity 1, but can be higher when
+    // allowRepeatedServices let a student land on the same copy more than
+    // once — no different from dummy padding edges, which have always relied
+    // on multiplicity > 1 (see the note above): Koenig's theorem doesn't care
+    // whether an edge is real or padding.
     const dummyStudentCount = copyCount - studentCount
     const totalLeft = studentCount + dummyStudentCount
     const adjacency: Map<number, number>[] = Array.from({ length: totalLeft }, () => new Map())
