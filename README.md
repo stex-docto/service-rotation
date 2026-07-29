@@ -14,16 +14,19 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
 
 ## Features
 
-- **Organizer**: create a group, define services (name, capacity per
-  rotation) and rotations (added/removed one at a time, like services —
-  either named freely or given a calendar date range, never both at once),
-  open the group, share one link. That's the whole organizer role — no
-  roster to pre-populate, no privileged access to anyone's grades once the
-  group is open.
+- **Organizer**: create a group and share its link immediately — interns can
+  join from that moment, even while services and rotations (added/removed
+  one at a time, either named freely or given a calendar date range, never
+  both at once) are still being configured. Two standing controls cover
+  membership: lock/unlock the roster against new joins, and ban an
+  individual member. Enabling voting (freezing services/rotations) is the
+  only other control — from then on there's no privileged access to anyone's
+  grades, including the organizer's own.
 - **Interns**: sign in with Google, open the link, join with a display name
-  (no pre-registration), grade every service on a 4-level scale, save the
-  draft as many times as you like, then lock your vote once — no edits
-  afterward.
+  (no pre-registration, no need to wait for voting to be enabled), grade
+  every service on a 4-level scale once voting is enabled, save the draft as
+  many times as you like, then lock your vote once — no edits afterward. You
+  can leave the group yourself at any time before locking your vote.
 - **On-demand computation**: anyone whose own vote is locked can compute the
   result at any time, locally, from whichever other members' votes are
   currently readable. There is no stored "final" document — every computation
@@ -98,10 +101,14 @@ case.
 See `firebase/firestore.rules` (heavily commented) for the authoritative
 version. Summary:
 
-- **Lifecycle**: `groups/{groupId}` moves `draft → open` — that's it, no
-  third "computed" state. Opening freezes services and rotations forever;
-  membership stays open (self-service join/leave) until the creator closes
-  the invite (`inviteOpen: false`), the one privilege they keep post-open.
+- **Lifecycle**: `groups/{groupId}` moves `draft → open`, where `open` means
+  *voting enabled* — services and rotations freeze at that point, forever.
+  Membership is independent of this: joining and leaving are self-service in
+  either phase, gated only by `inviteOpen` (the creator's roster lock,
+  toggleable in draft or open, any number of times) and, for leaving, the
+  member's own vote not being locked yet. The creator keeps two standing
+  privileges regardless of phase: toggling `inviteOpen`, and forcibly
+  removing (banning) any member.
 - **Identity is uid-only, never email.** Membership, votes, and the invite
   mechanism never reference anyone's email address. The group's own id
   (`crypto.randomUUID()`, unguessable, and groups are never listable by
@@ -127,8 +134,14 @@ version. Summary:
 
 ### Known, accepted trust gaps
 
-- A member can leave the group at any time before locking their vote — this
-  is fully self-service and by design, not a gap.
+- A member can leave the group at any time before locking their vote,
+  regardless of the roster lock — this is fully self-service and by design,
+  not a gap.
+- The creator can ban any member at any time, including one whose vote is
+  already locked. This is a deliberate moderation override, not something
+  the removed member could trigger themselves: a banned member's vote (if
+  any) is simply orphaned, never read again, since every computation and
+  progress count filters by the group's *current* member list.
 - A group with a permanent non-voter (joined, never locks) can only ever
   produce a provisional result excluding them — there is no deadline or
   override. Anyone can still compute a "result so far" at any time; nothing

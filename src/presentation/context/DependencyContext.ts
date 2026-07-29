@@ -2,6 +2,7 @@ import { createContext } from 'react'
 import {
     AddRotationSlotUseCase,
     AddServiceUseCase,
+    BanMemberUseCase,
     CloseInviteUseCase,
     ComputeResultUseCase,
     CreateGroupUseCase,
@@ -39,6 +40,7 @@ export interface DependencyContext {
     openGroupUseCase: OpenGroupUseCase
     joinGroupUseCase: JoinGroupUseCase
     leaveGroupUseCase: LeaveGroupUseCase
+    banMemberUseCase: BanMemberUseCase
     closeInviteUseCase: CloseInviteUseCase
     reopenInviteUseCase: ReopenInviteUseCase
     saveVoteDraftUseCase: SaveVoteDraftUseCase

@@ -3,6 +3,7 @@ import { GroupRepository, UserPreferencesRepository, UserRepository, VoteReposit
 import {
     AddRotationSlotUseCase,
     AddServiceUseCase,
+    BanMemberUseCase,
     CloseInviteUseCase,
     ComputeResultUseCase,
     CreateGroupUseCase,
@@ -64,6 +65,7 @@ function initDependencies(): DependencyContext {
     const openGroupUseCase = new OpenGroupUseCase(groupRepository, signInUseCase)
     const joinGroupUseCase = new JoinGroupUseCase(groupRepository, signInUseCase)
     const leaveGroupUseCase = new LeaveGroupUseCase(groupRepository, voteRepository, signInUseCase)
+    const banMemberUseCase = new BanMemberUseCase(groupRepository, signInUseCase)
     const closeInviteUseCase = new CloseInviteUseCase(groupRepository, signInUseCase)
     const reopenInviteUseCase = new ReopenInviteUseCase(groupRepository, signInUseCase)
     const saveVoteDraftUseCase = new SaveVoteDraftUseCase(
@@ -104,6 +106,7 @@ function initDependencies(): DependencyContext {
         openGroupUseCase,
         joinGroupUseCase,
         leaveGroupUseCase,
+        banMemberUseCase,
         closeInviteUseCase,
         reopenInviteUseCase,
         saveVoteDraftUseCase,

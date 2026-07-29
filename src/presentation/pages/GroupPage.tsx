@@ -17,14 +17,29 @@ export default function GroupPage() {
     const [group, setGroup] = useState<GroupEntity | null>(null)
     const [loading, setLoading] = useState(true)
 
+    // Waits for `user` rather than firing on mount: subscribing before
+    // sign-in resolves would attach the Firestore listener while
+    // unauthenticated, which firestore.rules always denies — and unlike a
+    // transient network error, `onSnapshot` never retries a permission
+    // failure on its own once the user then signs in. Re-keying on the uid
+    // (not the whole `user` object, which is a fresh reference every auth
+    // callback) re-subscribes exactly once sign-in actually happens.
     useEffect(() => {
         if (!groupId) return
+        if (!user) {
+            // Not signed in (yet, or at all) — nothing to subscribe to.
+            // `loading` must still resolve to false so the "not signed in"
+            // branch below can render instead of spinning forever.
+            setLoading(false)
+            return
+        }
         setLoading(true)
         return getGroupUseCase.subscribe({ groupId: GroupId.from(groupId) }, result => {
             setGroup(result.group)
             setLoading(false)
         })
-    }, [groupId, getGroupUseCase])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [groupId, getGroupUseCase, user?.id.value])
 
     if (userLoading || loading) {
         return <LoadingScreen />
@@ -55,16 +70,7 @@ export default function GroupPage() {
     const isCreator = group.isCreator(user.id)
 
     if (group.status === 'draft') {
-        if (!isCreator) {
-            return (
-                <VStack py={16} textAlign="center">
-                    <Text colorPalette="gray">
-                        Ce groupe n'est pas encore ouvert par son organisateur.
-                    </Text>
-                </VStack>
-            )
-        }
-        return <DraftAdminView group={group} />
+        return <DraftAdminView group={group} isCreator={isCreator} currentUser={user} />
     }
 
     // Membership and voting are uid-based throughout — a guest (anonymous)

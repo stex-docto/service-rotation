@@ -1,12 +1,12 @@
-import { FormEvent, useEffect, useState } from 'react'
-import { Box, Button, Field, Heading, Input, Progress, Text, VStack } from '@chakra-ui/react'
+import { useEffect, useState } from 'react'
+import { Box, Button, Heading, Progress, Text, VStack } from '@chakra-ui/react'
 import { CurrentUser, GroupEntity, VoteEntity } from '@domain'
 import { ComputeResultResult } from '@application'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { LoadingScreen } from '@presentation/components/LoadingScreen'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
-import { ShareLink } from './ShareLink'
+import { MembershipPanel } from './MembershipPanel'
 import { GradeSheetForm } from './GradeSheetForm'
 import { LiveResultView } from './LiveResultView'
 
@@ -17,22 +17,9 @@ interface OpenViewProps {
 }
 
 export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
-    const {
-        joinGroupUseCase,
-        leaveGroupUseCase,
-        closeInviteUseCase,
-        reopenInviteUseCase,
-        getMyVoteUseCase,
-        getVotingProgressUseCase,
-        computeResultUseCase
-    } = useDependencies()
+    const { getMyVoteUseCase, getVotingProgressUseCase, computeResultUseCase } = useDependencies()
 
     const isMember = group.isMember(currentUser.id)
-
-    const [displayName, setDisplayName] = useState(currentUser.displayName)
-    const [joining, setJoining] = useState(false)
-    const [leaving, setLeaving] = useState(false)
-    const [invitePending, setInvitePending] = useState(false)
 
     const [myVote, setMyVote] = useState<VoteEntity | null>(null)
     const [loadingVote, setLoadingVote] = useState(isMember)
@@ -75,47 +62,6 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
                 // the previous count showing.
             })
     }, [group.id, getVotingProgressUseCase, myVote])
-
-    async function join(event: FormEvent) {
-        event.preventDefault()
-        setJoining(true)
-        setError(null)
-        try {
-            await joinGroupUseCase.execute({ groupId: group.id, displayName: displayName.trim() })
-        } catch (err) {
-            setError(errorMessageFrom(err))
-        } finally {
-            setJoining(false)
-        }
-    }
-
-    async function leave() {
-        setLeaving(true)
-        setError(null)
-        try {
-            await leaveGroupUseCase.execute({ groupId: group.id })
-        } catch (err) {
-            setError(errorMessageFrom(err))
-        } finally {
-            setLeaving(false)
-        }
-    }
-
-    async function toggleInvite() {
-        setInvitePending(true)
-        setError(null)
-        try {
-            if (group.inviteOpen) {
-                await closeInviteUseCase.execute({ groupId: group.id })
-            } else {
-                await reopenInviteUseCase.execute({ groupId: group.id })
-            }
-        } catch (err) {
-            setError(errorMessageFrom(err))
-        } finally {
-            setInvitePending(false)
-        }
-    }
 
     async function computeNow() {
         setComputing(true)
@@ -164,59 +110,12 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
 
             <ErrorMessage message={error} />
 
-            {isCreator && (
-                <VStack gap={4} align="stretch" borderWidth="1px" borderRadius="md" p={4}>
-                    <Heading size="sm">Administration</Heading>
-                    <ShareLink groupId={group.id.value} />
-                    <Box>
-                        <Button
-                            variant="outline"
-                            colorPalette={group.inviteOpen ? 'orange' : 'blue'}
-                            onClick={toggleInvite}
-                            loading={invitePending}
-                        >
-                            {group.inviteOpen ? "Fermer l'invitation" : "Rouvrir l'invitation"}
-                        </Button>
-                        <Text fontSize="xs" colorPalette="gray" mt={2}>
-                            {group.inviteOpen
-                                ? "Tant que l'invitation est ouverte, quiconque a le lien peut rejoindre le groupe."
-                                : 'Plus personne ne peut rejoindre le groupe avec ce lien.'}
-                        </Text>
-                    </Box>
-                </VStack>
-            )}
-
-            {!isMember && (
-                <Box as="form" onSubmit={join} borderWidth="1px" borderRadius="md" p={4}>
-                    <Heading size="sm" mb={3}>
-                        Rejoindre ce groupe
-                    </Heading>
-                    {!group.inviteOpen ? (
-                        <Text colorPalette="gray">
-                            Ce groupe n'accepte plus de nouveaux membres.
-                        </Text>
-                    ) : (
-                        <VStack gap={3} align="stretch">
-                            <Field.Root required>
-                                <Field.Label>Votre nom</Field.Label>
-                                <Input
-                                    value={displayName}
-                                    onChange={event => setDisplayName(event.target.value)}
-                                    required
-                                />
-                            </Field.Root>
-                            <Button
-                                type="submit"
-                                colorPalette="blue"
-                                loading={joining}
-                                alignSelf="flex-start"
-                            >
-                                Rejoindre
-                            </Button>
-                        </VStack>
-                    )}
-                </Box>
-            )}
+            <MembershipPanel
+                group={group}
+                isCreator={isCreator}
+                currentUser={currentUser}
+                voteLocked={myVote?.locked ?? false}
+            />
 
             {isMember &&
                 (loadingVote ? (
@@ -236,24 +135,6 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
                 ) : (
                     <GradeSheetForm group={group} existingVote={myVote} onChanged={refreshMyVote} />
                 ))}
-
-            {isMember && !myVote?.locked && (
-                <Box borderWidth="1px" borderRadius="md" p={4}>
-                    <Text colorPalette="gray" fontSize="sm">
-                        Vous pouvez quitter ce groupe tant que votre vote n'est pas verrouillé.
-                    </Text>
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        colorPalette="red"
-                        onClick={leave}
-                        loading={leaving}
-                        mt={2}
-                    >
-                        Quitter le groupe
-                    </Button>
-                </Box>
-            )}
 
             {myVote?.locked && !computeResult && (
                 <Box borderWidth="1px" borderRadius="md" p={4}>

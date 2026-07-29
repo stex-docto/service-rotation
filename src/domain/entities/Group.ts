@@ -33,10 +33,10 @@ export interface Group {
     members: MemberSet
     rotationSlots: RotationSlot[]
     rotationMode: RotationMode
-    // Whether the invite link still accepts new self-joins. Meaningless while
-    // 'draft' (nobody can join yet regardless). Only the creator can close
-    // it — see closeInvite — but it's group configuration, not a standing
-    // privilege over anyone's vote: closing it only stops new joins.
+    // Whether the invite link still accepts new self-joins — true from
+    // creation, in both 'draft' and 'open'. Only the creator can lock it —
+    // see closeInvite — but it's group configuration, not a standing
+    // privilege over anyone's vote: locking it only stops new joins.
     inviteOpen: boolean
     createdBy: UserId
     createdDate: Date
@@ -236,8 +236,10 @@ export class GroupEntity implements Group {
     // Freezes services and rotation slots — everything the matching engine
     // needs about the group's shape becomes immutable from this point on, so
     // a vote cast against today's services/rotations keeps meaning the same
-    // thing forever. Membership is deliberately NOT frozen here: joining
-    // stays open (see inviteOpen) until the creator explicitly closes it.
+    // thing forever. Membership and its lock are untouched by this
+    // transition — joining/leaving/locking are independent of voting being
+    // enabled, and already possible during 'draft' (see join/leave/
+    // closeInvite below).
     open(): GroupEntity {
         this.requireDraft('open the group')
 
@@ -256,19 +258,17 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             this.rotationMode,
-            true,
+            this.inviteOpen,
             this.createdBy,
             this.createdDate
         )
     }
 
     // Self-service: any signed-in user can add themselves given the group's
-    // link, while the invite is open. Mirrors the firestore.rules delta
-    // check exactly — append-only, exactly your own entry.
+    // link, while the invite is open — draft or open, voting doesn't need to
+    // be enabled yet. Mirrors the firestore.rules delta check exactly —
+    // append-only, exactly your own entry.
     join(entry: MemberEntry): GroupEntity {
-        if (this.status !== 'open') {
-            throw new Error('This group is not open yet')
-        }
         if (!this.inviteOpen) {
             throw new Error('This group is no longer accepting new members')
         }
@@ -290,9 +290,11 @@ export class GroupEntity implements Group {
         )
     }
 
-    // Voluntary self-removal. Whether a member with an already-locked vote is
-    // allowed to call this is enforced by the use case (it needs the vote's
-    // lock state, which this entity doesn't know about), not here.
+    // Removes a member — used both for voluntary self-removal and for a
+    // creator-initiated ban. Which of those a caller may do, and under what
+    // conditions (e.g. a self-leaver's vote must not already be locked), is
+    // enforced by the use case, not here — this entity only knows how to
+    // shrink the roster by one entry.
     leave(userId: UserId): GroupEntity {
         if (!this.members.has(userId)) {
             throw new Error('Not a member of this group')
@@ -312,14 +314,13 @@ export class GroupEntity implements Group {
         )
     }
 
-    // The creator's one narrow privilege: stop the roster from growing
-    // further, so "everyone who's in has voted" becomes a stable fact rather
-    // than a moving target. Reversible — see reopenInvite.
+    // The creator's one standing privilege over membership: stop the roster
+    // from growing further. Gates joining only — a member can still leave
+    // (see the vote-lock check on leave above) and the creator can still ban
+    // regardless. Usable in 'draft' or 'open': locking membership is
+    // independent of whether voting has been enabled. Reversible — see
+    // reopenInvite.
     closeInvite(): GroupEntity {
-        if (this.status !== 'open') {
-            throw new Error('This group is not open yet')
-        }
-
         return new GroupEntity(
             this.id,
             this.name,
@@ -335,10 +336,6 @@ export class GroupEntity implements Group {
     }
 
     reopenInvite(): GroupEntity {
-        if (this.status !== 'open') {
-            throw new Error('This group is not open yet')
-        }
-
         return new GroupEntity(
             this.id,
             this.name,

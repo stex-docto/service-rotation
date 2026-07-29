@@ -13,18 +13,21 @@ import {
     VStack
 } from '@chakra-ui/react'
 import { MdDelete } from 'react-icons/md'
-import { GroupEntity, RotationMode, RotationSlot, ServiceEntity } from '@domain'
+import { CurrentUser, GroupEntity, RotationMode, RotationSlot, ServiceEntity } from '@domain'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
+import { MembershipPanel } from './MembershipPanel'
 
 const AUTOSAVE_DELAY_MS = 600
 
 interface DraftAdminViewProps {
     group: GroupEntity
+    isCreator: boolean
+    currentUser: CurrentUser
 }
 
-export function DraftAdminView({ group }: DraftAdminViewProps) {
+export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminViewProps) {
     const {
         updateGroupSettingsUseCase,
         addServiceUseCase,
@@ -217,14 +220,26 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
         await run(() => openGroupUseCase.execute({ groupId: group.id }))
     }
 
+    if (!isCreator) {
+        return (
+            <VStack gap={8} align="stretch">
+                <Box>
+                    <Heading size="lg">{group.name}</Heading>
+                    <Text colorPalette="gray">En attente que l'organisateur active le vote.</Text>
+                </Box>
+                <MembershipPanel group={group} isCreator={false} currentUser={currentUser} />
+            </VStack>
+        )
+    }
+
     return (
         <VStack gap={8} align="stretch">
             <Box>
                 <Heading size="lg">{group.name}</Heading>
-                <Text colorPalette="gray">
-                    Brouillon — visible seulement par vous tant que non ouvert.
-                </Text>
+                <Text colorPalette="gray">Le vote n'est pas encore activé.</Text>
             </Box>
+
+            <MembershipPanel group={group} isCreator currentUser={currentUser} />
 
             <ErrorMessage message={error} />
 
@@ -445,12 +460,12 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
 
             <Box borderWidth="1px" borderColor="blue.300" borderRadius="md" p={4}>
                 <Heading size="sm" mb={2}>
-                    Ouvrir le groupe
+                    Activer le vote
                 </Heading>
                 <Text fontSize="sm" colorPalette="gray" mb={4}>
-                    Une fois ouvert, les services et les rotations sont figés définitivement.
-                    Partagez ensuite le lien du groupe : chaque interne rejoint et vote lui-même,
-                    sans inscription préalable.
+                    Une fois activé, les services et les rotations sont figés définitivement. Les
+                    membres déjà inscrits peuvent commencer à voter ; d'autres peuvent continuer à
+                    rejoindre tant que vous n'avez pas verrouillé les membres ci-dessus.
                 </Text>
                 <Button
                     colorPalette="blue"
@@ -458,7 +473,7 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
                     loading={busy}
                     disabled={services.length === 0 || rotationSlots.length === 0}
                 >
-                    Ouvrir le groupe
+                    Activer le vote
                 </Button>
             </Box>
         </VStack>

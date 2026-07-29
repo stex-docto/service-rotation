@@ -9,41 +9,32 @@ service cloud.firestore {
     // ---------------------------------------------------------------------
     // groups/{groupId}
     //
-    // Lifecycle: draft -> open. There is no third "computed" state and no
-    // stored result any more — results are always computed live, locally, by
-    // whoever can currently read enough votes (see votes/{uid} below and
-    // README's security model). Membership is fully self-service and
-    // email-free: the group's own id (crypto.randomUUID(), unguessable, and
-    // groups are never listable by non-members) is the invite capability —
-    // there is no separate secret, only the owner-controlled inviteOpen
-    // switch below.
+    // Lifecycle: draft -> open, where 'open' means voting is enabled
+    // (services/rotations frozen) — it no longer gates membership. There is
+    // no third "computed" state and no stored result any more — results are
+    // always computed live, locally, by whoever can currently read enough
+    // votes (see votes/{uid} below and README's security model). Membership
+    // is fully self-service and email-free, and independent of status: the
+    // group's own id (crypto.randomUUID(), unguessable, and groups are never
+    // listable by non-members) is the invite capability from the moment the
+    // group is created, gated only by the owner-controlled inviteOpen switch
+    // below — there is no separate secret.
     // ---------------------------------------------------------------------
     match /groups/{groupId} {
-      function isCreator(data) {
-        return isSignedIn() && request.auth.uid == data.createdBy;
-      }
-      function isMemberUid(data) {
-        return isSignedIn() && request.auth.uid in data.memberUids;
-      }
-      function isMember(data) {
-        return isCreator(data) || isMemberUid(data);
-      }
       function ownVoteIsLocked() {
         return exists(/databases/$(database)/documents/groups/$(groupId)/votes/$(request.auth.uid))
           && get(/databases/$(database)/documents/groups/$(groupId)/votes/$(request.auth.uid)).data.locked == true;
       }
 
-      // An open group is readable by any signed-in user who already knows
-      // its id — not gated on membership. This is deliberate, not a hole:
-      // the id is a crypto.randomUUID() and groups are never listable by
+      // Readable by any signed-in user who already knows its id, draft or
+      // open — not gated on membership. This is deliberate, not a hole: the
+      // id is a crypto.randomUUID() and groups are never listable by
       // non-members (see `list` below), so knowing it already required
-      // having the shareable link. Without this, a prospective joiner could
-      // never even see the group's name/services to decide whether to join
-      // — self-join (see update clause (c)) needs a prior read of its own to
-      // validate against the latest member list, and that read would
-      // otherwise be denied to the exact people it's meant to serve. A draft
-      // group stays creator-only; it isn't joinable yet regardless.
-      allow get: if isSignedIn() && (resource.data.status == 'open' || isMember(resource.data));
+      // having the shareable link, shown from the moment the group is
+      // created. Self-join (see update clause (c)) needs a prior read of its
+      // own to validate against the latest member list, and that read would
+      // otherwise be denied to the exact people it's meant to serve.
+      allow get: if isSignedIn();
       // `list` is always called with a query filtered by createdBy or by
       // memberUids (array-contains) — see GroupRepository — so the same
       // membership check applies to every document the query can return.
@@ -62,39 +53,38 @@ service cloud.firestore {
         && request.resource.data.inviteOpen == true;
 
       allow update: if isSignedIn() && (
-        // (a) Creator edits a draft freely — services, name, rotations.
+        // (a) Creator edits a draft's configuration freely — services,
+        // name, rotations. Members may already exist by this point (joining
+        // doesn't wait for voting to be enabled), so this clause touches
+        // only configuration fields, never membership or the invite lock.
         (
           resource.data.status == 'draft'
           && request.auth.uid == resource.data.createdBy
           && request.resource.data.status == 'draft'
-          && request.resource.data.members.size() == 0
-          && request.resource.data.memberUids.size() == 0
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+               ['name', 'services', 'rotationSlots', 'rotationMode']
+             )
         )
         ||
-        // (b) Creator opens the group: freezes services/rotations and opens
-        // the invite link. There is no roster or lottery to pre-commit any
-        // more — membership starts empty and grows only via real self-joins
-        // afterward (see (c) below).
+        // (b) Creator enables voting: freezes services/rotations. Pure
+        // status flip — membership and the invite lock carry over exactly
+        // as they were, whatever they were.
         (
           resource.data.status == 'draft'
           && request.auth.uid == resource.data.createdBy
           && request.resource.data.status == 'open'
-          && request.resource.data.services == resource.data.services
-          && request.resource.data.rotationSlots == resource.data.rotationSlots
-          && request.resource.data.members.size() == 0
-          && request.resource.data.memberUids.size() == 0
-          && request.resource.data.inviteOpen == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
         )
         ||
         // (c) Self-join: exactly your own uid, added once, invite must be
-        // open. No organizer approval — the link is the only gate. Checking
-        // that the new `members` array is the old one with exactly one
-        // element appended, AND that element's userId is the caller's own,
-        // rules out sneaking in someone else's entry or tampering with an
-        // existing one under cover of a join.
+        // open. Works in 'draft' or 'open' — no organizer approval, no need
+        // to wait for voting to be enabled. Checking that the new `members`
+        // array is the old one with exactly one element appended, AND that
+        // element's userId is the caller's own, rules out sneaking in
+        // someone else's entry or tampering with an existing one under cover
+        // of a join.
         (
-          resource.data.status == 'open'
-          && resource.data.inviteOpen == true
+          resource.data.inviteOpen == true
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberUids'])
           && !(request.auth.uid in resource.data.memberUids)
           && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
@@ -104,13 +94,13 @@ service cloud.firestore {
           && request.resource.data.members[request.resource.data.members.size() - 1].userId == request.auth.uid
         )
         ||
-        // (d) Self-leave: exactly your own uid, removed. Blocked once your
-        // own vote is locked — permanent membership from that point on is
-        // what keeps capacity math and "everyone's voted" meaningful; see
-        // CLAUDE.md.
+        // (d) Self-leave: exactly your own uid, removed. Works in 'draft' or
+        // 'open', and regardless of the invite lock — that lock only stops
+        // new joins. Blocked once your own vote is locked — permanent
+        // membership from that point on is what keeps capacity math and
+        // "everyone's voted" meaningful; see CLAUDE.md.
         (
-          resource.data.status == 'open'
-          && request.auth.uid in resource.data.memberUids
+          request.auth.uid in resource.data.memberUids
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberUids'])
           && !(request.auth.uid in request.resource.data.memberUids)
           && request.resource.data.memberUids == resource.data.memberUids.removeAll([request.auth.uid])
@@ -118,19 +108,34 @@ service cloud.firestore {
           && !ownVoteIsLocked()
         )
         ||
-        // (e) Creator opens/closes the invite link — the one privilege they
-        // keep once the group is open. It only ever stops or allows new
-        // joins; it has no effect on anyone's ability to vote or read votes.
+        // (e) Creator locks/unlocks the invite link — usable in 'draft' or
+        // 'open', any number of times. It only ever stops or allows new
+        // joins; it has no effect on anyone's ability to leave, vote, or
+        // read votes.
         (
-          resource.data.status == 'open'
-          && request.auth.uid == resource.data.createdBy
+          request.auth.uid == resource.data.createdBy
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inviteOpen'])
+        )
+        ||
+        // (f) Creator bans a member: forced removal of exactly one existing
+        // member, any time, regardless of status, the invite lock, or that
+        // member's own vote lock — a moderation override, not something the
+        // removed member could use to dodge an assignment. Checking that the
+        // new memberUids has no id absent from the old one rules out this
+        // clause being used to sneak in a join disguised as a ban.
+        (
+          request.auth.uid == resource.data.createdBy
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberUids'])
+          && request.resource.data.memberUids.size() == resource.data.memberUids.size() - 1
+          && request.resource.data.memberUids.removeAll(resource.data.memberUids).size() == 0
+          && request.resource.data.members.size() == resource.data.members.size() - 1
         )
       );
 
-      // Only a draft can be deleted — no member or vote data exists yet.
+      // Only a draft with no members yet can be deleted.
       allow delete: if isSignedIn()
         && resource.data.status == 'draft'
+        && resource.data.members.size() == 0
         && request.auth.uid == resource.data.createdBy;
 
       // ---------------------------------------------------------------------
