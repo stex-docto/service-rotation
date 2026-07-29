@@ -59,8 +59,7 @@ export default function HowItWorksPage() {
                     On pourrait se demander s'il vaut mieux exagérer ses votes (ne noter que «
                     j'adore » ou « je déteste », sans jamais utiliser les niveaux intermédiaires)
                     pour essayer d'obtenir un meilleur résultat. On a vérifié, sur 1000 situations
-                    simulées, en comparant à chaque fois ce que la personne obtient réellement (pas
-                    ce qu'elle prétend ressentir) :
+                    simulées :
                 </Text>
                 <VStack gap={1} align="stretch" mb={3} pl={2}>
                     <Text>
