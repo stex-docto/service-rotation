@@ -16,6 +16,11 @@ export default function Header() {
                 </RouterLink>
 
                 <HStack gap={4}>
+                    <RouterLink to="/comment-ca-marche">
+                        <Text fontSize="sm" colorPalette="gray">
+                            Comment ça marche ?
+                        </Text>
+                    </RouterLink>
                     {!loading && user && (
                         <Text fontSize="sm" colorPalette="gray">
                             {user.displayName}

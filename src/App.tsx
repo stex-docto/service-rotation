@@ -7,6 +7,7 @@ import Footer from '@presentation/components/Footer'
 import HomePage from '@presentation/pages/HomePage'
 import CreateGroupPage from '@presentation/pages/CreateGroupPage'
 import GroupPage from '@presentation/pages/GroupPage'
+import HowItWorksPage from '@presentation/pages/HowItWorksPage'
 
 function App() {
     return (
@@ -20,6 +21,7 @@ function App() {
                                 <Route path="/" element={<HomePage />} />
                                 <Route path="/create" element={<CreateGroupPage />} />
                                 <Route path="/group/:groupId" element={<GroupPage />} />
+                                <Route path="/comment-ca-marche" element={<HowItWorksPage />} />
                             </Routes>
                         </Container>
                         <Footer />
