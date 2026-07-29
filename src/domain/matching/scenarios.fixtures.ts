@@ -85,7 +85,7 @@ export const scenarios: Scenario[] = []
         description:
             'Six students, four services sized to exactly fit the cohort (2+2+1+1), two ' +
             'rotations, mild preference differences — the everyday case, no artificial slack.',
-        input: { rotations: 2, services, students, lotteryOrder },
+        input: { rotations: 2, services, students, lotteryOrder, allowRepeatedServices: false },
         expected: {
             worstCost: 2,
             totalCost: 8,
@@ -137,7 +137,7 @@ export const scenarios: Scenario[] = []
             'Six students all rate "Popular" (capacity 2) as best (0), Cardiology next (2), and ' +
             'Neurology last (3) — only two get their favourite, and capacity-2 Cardiology can ' +
             'only absorb two of the remaining four, pushing the last two to Neurology (cost 3).',
-        input: { rotations: 1, services, students, lotteryOrder },
+        input: { rotations: 1, services, students, lotteryOrder, allowRepeatedServices: false },
         expected: {
             worstCost: 3,
             totalCost: 10,
@@ -175,7 +175,7 @@ export const scenarios: Scenario[] = []
         description:
             'Six students, three services at capacity 2 each (exactly enough), everyone ranks ' +
             'S1 > S2 > S3 identically — two students are unavoidably stuck with S3.',
-        input: { rotations: 1, services, students, lotteryOrder },
+        input: { rotations: 1, services, students, lotteryOrder, allowRepeatedServices: false },
         expected: {
             worstCost: 3,
             totalCost: 8,
@@ -220,7 +220,7 @@ export const scenarios: Scenario[] = []
         description:
             'Six students: three love X and hate Y, three love Y and hate X. Capacity 3 each — ' +
             'every student gets their favourite, at zero cost.',
-        input: { rotations: 1, services, students, lotteryOrder },
+        input: { rotations: 1, services, students, lotteryOrder, allowRepeatedServices: false },
         expected: {
             worstCost: 0,
             totalCost: 0,
@@ -271,7 +271,7 @@ export const scenarios: Scenario[] = []
             'Five students, four tight-capacity services. The minimax-fair solution (total 5) ' +
             'costs strictly more than the unconstrained optimum (total 4) — that +1 gap is the ' +
             'price of fairness.',
-        input: { rotations: 1, services, students, lotteryOrder },
+        input: { rotations: 1, services, students, lotteryOrder, allowRepeatedServices: false },
         expected: {
             worstCost: 2,
             totalCost: 5,
@@ -306,7 +306,7 @@ export const scenarios: Scenario[] = []
         description:
             'Four students, two services cap 2 each, two rotations, every grade = 1 — pure ' +
             'lottery-order tie-break, no real preference signal.',
-        input: { rotations: 2, services, students, lotteryOrder },
+        input: { rotations: 2, services, students, lotteryOrder, allowRepeatedServices: false },
         expected: {
             worstCost: 1,
             totalCost: 8,
