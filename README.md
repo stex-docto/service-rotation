@@ -16,7 +16,8 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
 
 - **Organizer**: create a group, define services (name, capacity per
   rotation) and rotation count, add interns by email, open submissions, share
-  one link.
+  one link. Each rotation can optionally get a start/end date, picked from a
+  calendar, purely for display — the matching engine never sees them.
 - **Interns**: sign in with Google, grade every service on a 6-level scale,
   submit once — no edits afterward.
 - **Automatic computation**: the moment every intern has submitted, whichever

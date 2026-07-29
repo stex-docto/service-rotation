@@ -11,6 +11,28 @@ import {
 
 export type GroupStatus = 'draft' | 'open' | 'computed'
 
+// Purely cosmetic scheduling info the organizer may attach to each rotation
+// slot (e.g. "Rotation 1: Sept 1 - Sept 30") — never read by the matching
+// engine, only displayed. Either date may be null if not yet known.
+export interface RotationPeriod {
+    startDate: string | null
+    endDate: string | null
+}
+
+function emptyRotationPeriods(rotations: number): RotationPeriod[] {
+    return Array.from({ length: rotations }, () => ({ startDate: null, endDate: null }))
+}
+
+// Truncates or pads with empty periods so the array always tracks the
+// current rotation count, however it last changed.
+function resizeRotationPeriods(periods: RotationPeriod[], rotations: number): RotationPeriod[] {
+    const resized = periods.slice(0, rotations)
+    while (resized.length < rotations) {
+        resized.push({ startDate: null, endDate: null })
+    }
+    return resized
+}
+
 export interface Group {
     id: GroupId
     name: string
@@ -18,6 +40,7 @@ export interface Group {
     status: GroupStatus
     services: ServiceSet
     roster: RosterSet
+    rotationPeriods: RotationPeriod[]
     // null until open() resolves it to a concrete number — see open() for why
     // a bare default of 0 would leave the whole rejection mechanism inert.
     maxRejections: number | null
@@ -42,6 +65,7 @@ export class GroupEntity implements Group {
         public readonly status: GroupStatus,
         public readonly services: ServiceSet,
         public readonly roster: RosterSet,
+        public readonly rotationPeriods: RotationPeriod[],
         public readonly maxRejections: number | null,
         public readonly lotterySeed: string | null,
         public readonly lotteryOrder: string[] | null,
@@ -69,6 +93,7 @@ export class GroupEntity implements Group {
             'draft',
             new ServiceSet(),
             new RosterSet(),
+            emptyRotationPeriods(rotations),
             null,
             null,
             null,
@@ -88,6 +113,7 @@ export class GroupEntity implements Group {
     updateSettings(options: {
         name?: string
         rotations?: number
+        rotationPeriods?: RotationPeriod[]
         maxRejections?: number
     }): GroupEntity {
         this.requireDraft('update settings')
@@ -102,6 +128,11 @@ export class GroupEntity implements Group {
             throw new Error('maxRejections cannot be negative')
         }
 
+        const rotationPeriods = resizeRotationPeriods(
+            options.rotationPeriods ?? this.rotationPeriods,
+            rotations
+        )
+
         return new GroupEntity(
             this.id,
             options.name ?? this.name,
@@ -109,6 +140,7 @@ export class GroupEntity implements Group {
             this.status,
             this.services,
             this.roster,
+            rotationPeriods,
             maxRejections,
             this.lotterySeed,
             this.lotteryOrder,
@@ -129,6 +161,7 @@ export class GroupEntity implements Group {
             this.status,
             this.services.add(service),
             this.roster,
+            this.rotationPeriods,
             this.maxRejections,
             this.lotterySeed,
             this.lotteryOrder,
@@ -152,6 +185,7 @@ export class GroupEntity implements Group {
             this.status,
             this.services.add(service),
             this.roster,
+            this.rotationPeriods,
             this.maxRejections,
             this.lotterySeed,
             this.lotteryOrder,
@@ -175,6 +209,7 @@ export class GroupEntity implements Group {
             this.status,
             this.services.remove(serviceId),
             this.roster,
+            this.rotationPeriods,
             this.maxRejections,
             this.lotterySeed,
             this.lotteryOrder,
@@ -195,6 +230,7 @@ export class GroupEntity implements Group {
             this.status,
             this.services,
             this.roster.add(entry),
+            this.rotationPeriods,
             this.maxRejections,
             this.lotterySeed,
             this.lotteryOrder,
@@ -218,6 +254,7 @@ export class GroupEntity implements Group {
             this.status,
             this.services,
             this.roster.remove(email),
+            this.rotationPeriods,
             this.maxRejections,
             this.lotterySeed,
             this.lotteryOrder,
@@ -262,6 +299,7 @@ export class GroupEntity implements Group {
             'open',
             this.services,
             this.roster,
+            this.rotationPeriods,
             resolvedMaxRejections,
             lotterySeed,
             lotteryOrder,
@@ -292,6 +330,7 @@ export class GroupEntity implements Group {
             this.status,
             this.services,
             this.roster,
+            this.rotationPeriods,
             this.maxRejections,
             this.lotterySeed,
             this.lotteryOrder,
@@ -325,6 +364,7 @@ export class GroupEntity implements Group {
             'computed',
             this.services,
             this.roster,
+            this.rotationPeriods,
             this.maxRejections,
             this.lotterySeed,
             this.lotteryOrder,
