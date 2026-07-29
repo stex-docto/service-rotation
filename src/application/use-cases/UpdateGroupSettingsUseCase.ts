@@ -1,10 +1,18 @@
-import { GroupEntity, GroupId, GroupNotFoundError, GroupRepository, PermissionError } from '@domain'
+import {
+    GroupEntity,
+    GroupId,
+    GroupNotFoundError,
+    GroupRepository,
+    PermissionError,
+    RotationPeriod
+} from '@domain'
 import { SignInUseCase } from '@application'
 
 export interface UpdateGroupSettingsCommand {
     groupId: GroupId
     name?: string
     rotations?: number
+    rotationPeriods?: RotationPeriod[]
     maxRejections?: number
 }
 
@@ -32,6 +40,7 @@ export class UpdateGroupSettingsUseCase {
         const updatedGroup = group.updateSettings({
             name: command.name,
             rotations: command.rotations,
+            rotationPeriods: command.rotationPeriods,
             maxRejections: command.maxRejections
         })
 

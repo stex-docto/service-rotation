@@ -13,13 +13,24 @@ import {
     VStack
 } from '@chakra-ui/react'
 import { MdDelete } from 'react-icons/md'
-import { GroupEntity, ServiceId } from '@domain'
+import { GroupEntity, RotationPeriod, ServiceId } from '@domain'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
 
 interface DraftAdminViewProps {
     group: GroupEntity
+}
+
+// Keeps the period rows in sync with the rotation count as the organizer
+// types, before it's saved — mirrors GroupEntity's own resizing so the row
+// list never lags behind the number input.
+function resizeRotationPeriods(periods: RotationPeriod[], count: number): RotationPeriod[] {
+    const resized = periods.slice(0, count)
+    while (resized.length < count) {
+        resized.push({ startDate: null, endDate: null })
+    }
+    return resized
 }
 
 export function DraftAdminView({ group }: DraftAdminViewProps) {
@@ -37,6 +48,7 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
 
     const [name, setName] = useState(group.name)
     const [rotations, setRotations] = useState(String(group.rotations))
+    const [rotationPeriods, setRotationPeriods] = useState<RotationPeriod[]>(group.rotationPeriods)
     const [maxRejections, setMaxRejections] = useState(
         group.maxRejections === null ? '' : String(group.maxRejections)
     )
@@ -60,6 +72,24 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
         }
     }
 
+    function changeRotations(value: string) {
+        setRotations(value)
+        // Ignore transient empty/invalid input (e.g. clearing the field to
+        // retype a new count) so it doesn't wipe out dates already entered.
+        const count = Number(value)
+        if (value !== '' && Number.isFinite(count) && count >= 0) {
+            setRotationPeriods(previous => resizeRotationPeriods(previous, count))
+        }
+    }
+
+    function changeRotationPeriod(index: number, field: keyof RotationPeriod, value: string) {
+        setRotationPeriods(previous =>
+            previous.map((period, i) =>
+                i === index ? { ...period, [field]: value === '' ? null : value } : period
+            )
+        )
+    }
+
     async function saveSettings(event: FormEvent) {
         event.preventDefault()
         await run(() =>
@@ -67,6 +97,7 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
                 groupId: group.id,
                 name: name.trim(),
                 rotations: Number(rotations),
+                rotationPeriods,
                 maxRejections: maxRejections === '' ? undefined : Number(maxRejections)
             })
         )
@@ -132,13 +163,50 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
                         <Field.Label>Nombre de rotations</Field.Label>
                         <NumberInput.Root
                             value={rotations}
-                            onValueChange={details => setRotations(details.value)}
+                            onValueChange={details => changeRotations(details.value)}
                             min={1}
                         >
                             <NumberInput.Input />
                             <NumberInput.Control />
                         </NumberInput.Root>
                     </Field.Root>
+                    <VStack gap={2} align="stretch">
+                        {rotationPeriods.map((period, index) => (
+                            <HStack key={index} gap={3} align="flex-end" flexWrap="wrap">
+                                <Text minW="90px" fontSize="sm" fontWeight="medium">
+                                    Rotation {index + 1}
+                                </Text>
+                                <Field.Root flex="1" minW="150px">
+                                    <Field.Label>Début</Field.Label>
+                                    <Input
+                                        type="date"
+                                        value={period.startDate ?? ''}
+                                        onChange={event =>
+                                            changeRotationPeriod(
+                                                index,
+                                                'startDate',
+                                                event.target.value
+                                            )
+                                        }
+                                    />
+                                </Field.Root>
+                                <Field.Root flex="1" minW="150px">
+                                    <Field.Label>Fin</Field.Label>
+                                    <Input
+                                        type="date"
+                                        value={period.endDate ?? ''}
+                                        onChange={event =>
+                                            changeRotationPeriod(
+                                                index,
+                                                'endDate',
+                                                event.target.value
+                                            )
+                                        }
+                                    />
+                                </Field.Root>
+                            </HStack>
+                        ))}
+                    </VStack>
                     <Field.Root>
                         <Field.Label>Nombre maximum de refus autorisés par interne</Field.Label>
                         <NumberInput.Root

@@ -5,6 +5,7 @@ import {
     GroupStatus,
     RosterEntry,
     RosterSet,
+    RotationPeriod,
     ServiceEntity,
     ServiceId,
     ServiceSet,
@@ -31,6 +32,12 @@ export type FirebaseGroupDocument = {
     services: { [serviceId: string]: FirebaseServiceDocument }
     roster: FirebaseRosterEntryDocument[]
     rosterEmails: string[]
+    // Omitted entirely (not just an empty array) when no period has ever been
+    // set, so a legacy document that predates this field round-trips through
+    // toGroupEntity/toGroupDocument byte-for-byte — see the roster-ordering
+    // note above for why that matters: the submission-recording rule diffs
+    // this whole document, and would reject an incidental new key.
+    rotationPeriods?: RotationPeriod[]
     maxRejections: number | null
     lotterySeed: string | null
     lotteryOrder: string[] | null
@@ -65,6 +72,10 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
         .getRoster()
         .map(entry => ({ email: entry.email.value, displayName: entry.displayName }))
 
+    const hasRotationPeriods = group.rotationPeriods.some(
+        period => period.startDate !== null || period.endDate !== null
+    )
+
     return {
         id: group.id.value,
         name: group.name,
@@ -73,6 +84,7 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
         services,
         roster,
         rosterEmails: roster.map(entry => entry.email),
+        ...(hasRotationPeriods ? { rotationPeriods: group.rotationPeriods } : {}),
         maxRejections: group.maxRejections,
         lotterySeed: group.lotterySeed,
         lotteryOrder: group.lotteryOrder,
@@ -100,6 +112,10 @@ export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
         data.roster.map(entry => new RosterEntry(Email.from(entry.email), entry.displayName))
     )
 
+    const rotationPeriods: RotationPeriod[] =
+        data.rotationPeriods ??
+        Array.from({ length: data.rotations }, () => ({ startDate: null, endDate: null }))
+
     return new GroupEntity(
         GroupId.from(data.id),
         data.name,
@@ -107,6 +123,7 @@ export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
         data.status,
         services,
         roster,
+        rotationPeriods,
         data.maxRejections,
         data.lotterySeed,
         data.lotteryOrder,
