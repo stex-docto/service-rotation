@@ -74,7 +74,8 @@ describe('gaming resistance: does exaggerating your votes pay off?', () => {
                 rotations,
                 services,
                 students: honestStudents,
-                lotteryOrder
+                lotteryOrder,
+                allowRepeatedServices: false
             }
 
             const victimId = lotteryOrder[Math.floor(rng() * studentCount)]
@@ -90,7 +91,8 @@ describe('gaming resistance: does exaggerating your votes pay off?', () => {
                 rotations,
                 services,
                 students: minMaxedStudents,
-                lotteryOrder
+                lotteryOrder,
+                allowRepeatedServices: false
             }
 
             let honestResult, minMaxedResult
