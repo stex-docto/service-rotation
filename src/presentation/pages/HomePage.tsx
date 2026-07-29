@@ -139,7 +139,7 @@ export default function HomePage() {
                         </Heading>
                         {participating.length === 0 ? (
                             <Text colorPalette="gray">
-                                Vous ne participez à aucun groupe pour l'instant.
+                                Tu ne participes à aucun groupe pour l'instant.
                             </Text>
                         ) : (
                             <VStack gap={2} align="stretch">

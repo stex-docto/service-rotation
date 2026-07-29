@@ -61,8 +61,8 @@ export function LiveResultView({ group, computeResult }: LiveResultViewProps) {
                 </Heading>
                 <Text colorPalette="gray">
                     {votes.length === 0
-                        ? "Aucun vote n'est encore lisible — verrouillez le vôtre pour commencer."
-                        : "Aucune affectation valide n'existe avec les votes actuellement lisibles. Cela devrait se résoudre une fois d'autres membres votés."}
+                        ? "Aucune note n'est encore lisible — verrouillez les vôtres pour commencer."
+                        : "Aucune affectation valide n'existe avec les notes actuellement lisibles. Cela devrait se résoudre une fois que d'autres membres auront noté."}
                 </Text>
             </Box>
         )
@@ -149,10 +149,10 @@ export function LiveResultView({ group, computeResult }: LiveResultViewProps) {
 
             <Box borderWidth="1px" borderRadius="md" p={4} overflowX="auto">
                 <Heading size="xs" mb={1} colorPalette="gray">
-                    Transparence : votes de chacun
+                    Transparence : notes de chacun
                 </Heading>
                 <Text fontSize="xs" colorPalette="gray" mb={3}>
-                    Visible uniquement par les membres ayant eux-mêmes verrouillé leur vote —
+                    Visible uniquement par les membres ayant eux-mêmes verrouillé leurs notes —
                     l'équité se vérifie, elle ne se prend pas sur parole.
                 </Text>
                 <Table.Root size="sm">
@@ -189,8 +189,8 @@ export function LiveResultView({ group, computeResult }: LiveResultViewProps) {
 
             <Text fontSize="xs" colorPalette={isProvisional ? 'orange.600' : 'gray'}>
                 {isProvisional
-                    ? `Résultat provisoire — ${includedCount} / ${totalMembers} membres ont voté et sont inclus. Il changera si les votes ou l'appartenance au groupe évoluent.`
-                    : `Résultat stable — les ${totalMembers} membres ont tous voté et le groupe n'accepte plus de nouveaux membres. Tout recalcul redonnera exactement le même résultat.`}
+                    ? `Résultat provisoire — ${includedCount} / ${totalMembers} membres ont noté et sont inclus. Il changera si les notes ou l'appartenance au groupe évoluent.`
+                    : `Résultat stable — les ${totalMembers} membres ont tous noté et le groupe n'accepte plus de nouveaux membres. Tout recalcul redonnera exactement le même résultat.`}
             </Text>
         </VStack>
     )

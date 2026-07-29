@@ -48,7 +48,7 @@ export default function GroupPage() {
     if (!user) {
         return (
             <VStack gap={4} py={16} textAlign="center">
-                <Text>Connectez-vous pour accéder à ce groupe.</Text>
+                <Text>Connecte-toi pour accéder à ce groupe.</Text>
                 <Button colorPalette="blue" onClick={() => signInUseCase.signInWithGoogle()}>
                     Se connecter avec Google
                 </Button>
@@ -61,7 +61,7 @@ export default function GroupPage() {
         return (
             <VStack py={16} textAlign="center">
                 <Text colorPalette="gray">
-                    Ce groupe n'existe pas, ou vous n'y avez pas accès avec ce compte.
+                    Ce groupe n'existe pas, ou tu n'y as pas accès avec ce compte.
                 </Text>
             </VStack>
         )

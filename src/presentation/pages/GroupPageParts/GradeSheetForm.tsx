@@ -92,11 +92,11 @@ export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFor
     return (
         <VStack gap={5} align="stretch">
             <Box>
-                <Heading size="md">Notez chaque service</Heading>
+                <Heading size="md">Note chaque service</Heading>
                 <Text fontSize="sm" colorPalette="gray" mt={1}>
-                    Notez chaque service honnêtement : votre note n'influence que votre propre
-                    affectation, jamais celle des autres. Votre brouillon est enregistré
-                    automatiquement ; verrouillez votre vote une fois prêt.
+                    Note chaque service honnêtement : ta note n'influence que ta propre affectation,
+                    jamais celle des autres. Ton brouillon est enregistré automatiquement ;
+                    verrouille tes notes une fois prêt.
                 </Text>
             </Box>
 
@@ -166,12 +166,13 @@ export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFor
                           : ' '}
                 </Text>
                 <Button colorPalette="blue" loading={locking} onClick={() => setConfirmOpen(true)}>
-                    Verrouiller mon vote
+                    Verrouiller mes notes
                 </Button>
             </HStack>
             <Text fontSize="xs" colorPalette="gray">
-                Une fois verrouillé, votre vote ne peut plus être modifié. Vous pourrez alors voir
-                le vote des autres membres ayant eux-mêmes verrouillé le leur — et eux le vôtre.
+                Une fois verrouillées, tes notes ne peuvent plus être modifiées. Tu pourras alors
+                voir les notes des autres membres ayant eux-mêmes verrouillé les leurs — et eux les
+                tiennes.
             </Text>
 
             <Dialog.Root
@@ -184,11 +185,11 @@ export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFor
                     <Dialog.Positioner>
                         <Dialog.Content>
                             <Dialog.Header>
-                                <Dialog.Title>Verrouiller votre vote ?</Dialog.Title>
+                                <Dialog.Title>Verrouiller tes notes ?</Dialog.Title>
                             </Dialog.Header>
                             <Dialog.Body>
                                 <Text>
-                                    Cette action est définitive : vous ne pourrez plus modifier vos
+                                    Cette action est définitive : tu ne pourras plus modifier tes
                                     notes ensuite.
                                 </Text>
                             </Dialog.Body>
