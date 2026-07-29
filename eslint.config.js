@@ -47,6 +47,14 @@ export default [
     },
   },
   {
+    files: ['**/*.test.{ts,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     ignores: ['dist', 'eslint.config.js'],
   },
 ];
