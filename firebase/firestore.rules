@@ -6,122 +6,194 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function userEmail() {
-      return request.auth.token.email;
-    }
-
     // ---------------------------------------------------------------------
     // groups/{groupId}
     //
-    // Lifecycle: draft -> open -> computed. Each state transition is its own
-    // clause below rather than one loose "creator can write" rule, because
-    // the whole "no modification possible" pitch of this app depends on
-    // exactly which fields can change and when — see the plan and
-    // GroupEntity for the reasoning behind each one.
+    // Lifecycle: draft -> open. There is no third "computed" state and no
+    // stored result any more — results are always computed live, locally, by
+    // whoever can currently read enough votes (see votes/{uid} below and
+    // README's security model). Membership is fully self-service and
+    // email-free: the group's own id (crypto.randomUUID(), unguessable, and
+    // groups are never listable by non-members) is the invite capability —
+    // there is no separate secret, only the owner-controlled inviteOpen
+    // switch below.
     // ---------------------------------------------------------------------
     match /groups/{groupId} {
       function isCreator(data) {
         return isSignedIn() && request.auth.uid == data.createdBy;
       }
-      function isOnRoster(data) {
-        return isSignedIn() && userEmail() in data.rosterEmails;
+      function isMemberUid(data) {
+        return isSignedIn() && request.auth.uid in data.memberUids;
       }
       function isMember(data) {
-        return isCreator(data) || isOnRoster(data);
+        return isCreator(data) || isMemberUid(data);
+      }
+      function ownVoteIsLocked() {
+        return exists(/databases/$(database)/documents/groups/$(groupId)/votes/$(request.auth.uid))
+          && get(/databases/$(database)/documents/groups/$(groupId)/votes/$(request.auth.uid)).data.locked == true;
       }
 
-      allow get: if isMember(resource.data);
+      // An open group is readable by any signed-in user who already knows
+      // its id — not gated on membership. This is deliberate, not a hole:
+      // the id is a crypto.randomUUID() and groups are never listable by
+      // non-members (see `list` below), so knowing it already required
+      // having the shareable link. Without this, a prospective joiner could
+      // never even see the group's name/services to decide whether to join
+      // — self-join (see update clause (c)) needs a prior read of its own to
+      // validate against the latest member list, and that read would
+      // otherwise be denied to the exact people it's meant to serve. A draft
+      // group stays creator-only; it isn't joinable yet regardless.
+      allow get: if isSignedIn() && (resource.data.status == 'open' || isMember(resource.data));
       // `list` is always called with a query filtered by createdBy or by
-      // rosterEmails (array-contains) — see GroupRepository — so the same
+      // memberUids (array-contains) — see GroupRepository — so the same
       // membership check applies to every document the query can return.
+      // A non-member can never discover a groupId this way; the link itself
+      // is the only way in.
       allow list: if isSignedIn() && (
         request.auth.uid == resource.data.createdBy ||
-        userEmail() in resource.data.rosterEmails
+        request.auth.uid in resource.data.memberUids
       );
 
       allow create: if isSignedIn()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.status == 'draft'
-        && request.resource.data.submittedEmails.size() == 0
-        && request.resource.data.lotterySeed == null
-        && request.resource.data.lotteryOrder == null;
+        && request.resource.data.members.size() == 0
+        && request.resource.data.memberUids.size() == 0
+        && request.resource.data.inviteOpen == true;
 
       allow update: if isSignedIn() && (
-        // (a) Creator edits a draft freely — services, roster, settings.
+        // (a) Creator edits a draft freely — services, name, rotations.
         (
           resource.data.status == 'draft'
           && request.auth.uid == resource.data.createdBy
           && request.resource.data.status == 'draft'
-          && request.resource.data.submittedEmails.size() == 0
+          && request.resource.data.members.size() == 0
+          && request.resource.data.memberUids.size() == 0
         )
         ||
-        // (b) Creator opens submissions: freezes services/roster/rotations,
-        // commits the tie-break lottery, resolves maxRejections. This is the
-        // ONLY write that may set lotterySeed/lotteryOrder, and it can only
-        // happen once (draft -> open).
+        // (b) Creator opens the group: freezes services/rotations and opens
+        // the invite link. There is no roster or lottery to pre-commit any
+        // more — membership starts empty and grows only via real self-joins
+        // afterward (see (c) below).
         (
           resource.data.status == 'draft'
           && request.auth.uid == resource.data.createdBy
           && request.resource.data.status == 'open'
           && request.resource.data.services == resource.data.services
-          && request.resource.data.roster == resource.data.roster
-          && request.resource.data.rosterEmails == resource.data.rosterEmails
-          && request.resource.data.rotations == resource.data.rotations
-          && request.resource.data.lotterySeed is string
-          && request.resource.data.lotteryOrder is list
-          && request.resource.data.submittedEmails.size() == 0
+          && request.resource.data.rotationSlots == resource.data.rotationSlots
+          && request.resource.data.members.size() == 0
+          && request.resource.data.memberUids.size() == 0
+          && request.resource.data.inviteOpen == true
         )
         ||
-        // (c) A roster member records their own submission. Append-only:
-        // exactly their own email, added once, nothing else on the group
-        // changes. There is deliberately no cross-check that a real
-        // submission document exists — see CLAUDE.md's security-model notes
-        // for why that residual gap is self-harming only, not exploitable
-        // against anyone else.
+        // (c) Self-join: exactly your own uid, added once, invite must be
+        // open. No organizer approval — the link is the only gate. Checking
+        // that the new `members` array is the old one with exactly one
+        // element appended, AND that element's userId is the caller's own,
+        // rules out sneaking in someone else's entry or tampering with an
+        // existing one under cover of a join.
         (
           resource.data.status == 'open'
-          && isOnRoster(resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['submittedEmails'])
-          && !(userEmail() in resource.data.submittedEmails)
-          && request.resource.data.submittedEmails == resource.data.submittedEmails.concat([userEmail()])
+          && resource.data.inviteOpen == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberUids'])
+          && !(request.auth.uid in resource.data.memberUids)
+          && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
+          && request.resource.data.members == resource.data.members.concat(
+               [request.resource.data.members[request.resource.data.members.size() - 1]]
+             )
+          && request.resource.data.members[request.resource.data.members.size() - 1].userId == request.auth.uid
         )
         ||
-        // (d) Whoever's browser computes the result flips the status.
-        // Gated on the result already existing (defense in depth) — see
-        // ComputeResultUseCase, which treats this specific write as
-        // best-effort: reads elsewhere key off submittedEmails/result
-        // existence, never off this field, so a dropped write here is
-        // cosmetic, not a correctness bug.
+        // (d) Self-leave: exactly your own uid, removed. Blocked once your
+        // own vote is locked — permanent membership from that point on is
+        // what keeps capacity math and "everyone's voted" meaningful; see
+        // CLAUDE.md.
         (
           resource.data.status == 'open'
-          && isMember(resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
-          && request.resource.data.status == 'computed'
-          && exists(/databases/$(database)/documents/groups/$(groupId)/result/final)
+          && request.auth.uid in resource.data.memberUids
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberUids'])
+          && !(request.auth.uid in request.resource.data.memberUids)
+          && request.resource.data.memberUids == resource.data.memberUids.removeAll([request.auth.uid])
+          && request.resource.data.members.size() == resource.data.members.size() - 1
+          && !ownVoteIsLocked()
+        )
+        ||
+        // (e) Creator opens/closes the invite link — the one privilege they
+        // keep once the group is open. It only ever stops or allows new
+        // joins; it has no effect on anyone's ability to vote or read votes.
+        (
+          resource.data.status == 'open'
+          && request.auth.uid == resource.data.createdBy
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inviteOpen'])
         )
       );
 
-      // Only a draft can be deleted — no participant data exists yet.
+      // Only a draft can be deleted — no member or vote data exists yet.
       allow delete: if isSignedIn()
         && resource.data.status == 'draft'
         && request.auth.uid == resource.data.createdBy;
 
       // ---------------------------------------------------------------------
-      // groups/{groupId}/submissions/{uid} — METADATA ONLY (email,
-      // submittedAt, rejectedServiceIds). Deliberately separate from the
-      // actual grades (see grades/data below): a rejection reveals a veto,
-      // never a preference among accepted services, so it's safe to keep
-      // this always listable. That's what lets SubmitGradesUseCase run an
-      // accurate feasibility preflight without exposing anyone's real
-      // preferences before the group is complete.
+      // groups/{groupId}/votes/{uid} — the actual grades. Private to the
+      // voter until locked; even then, readable by another member only if
+      // THAT member's own vote is ALSO locked — see canReadVote below. This
+      // holds for every member equally, including the creator: there is no
+      // standing organizer access to anyone's grades any more. Nobody can
+      // act on what they see here either way, since by the time you can
+      // read anything your own vote must already be locked and unchangeable.
       // ---------------------------------------------------------------------
-      match /submissions/{uid} {
+      match /votes/{uid} {
+        function parentGroup() {
+          return get(/databases/$(database)/documents/groups/$(groupId)).data;
+        }
+        function isOwnVote() {
+          return isSignedIn() && request.auth.uid == uid;
+        }
+        function callerVoteIsLocked() {
+          return exists(/databases/$(database)/documents/groups/$(groupId)/votes/$(request.auth.uid))
+            && get(/databases/$(database)/documents/groups/$(groupId)/votes/$(request.auth.uid)).data.locked == true;
+        }
+        function canReadVote() {
+          return isOwnVote() || (resource.data.locked == true && callerVoteIsLocked());
+        }
+
+        allow get: if isSignedIn() && canReadVote();
+        allow create: if isOwnVote()
+          && parentGroup().status == 'open'
+          && uid in parentGroup().memberUids
+          && request.resource.data.locked == false;
+        allow update: if isOwnVote() && (
+          // Editing a still-unlocked draft.
+          (
+            resource.data.locked == false
+            && request.resource.data.locked == false
+          )
+          ||
+          // Locking — one-way (see VoteEntity.lock), and this specific write
+          // may only flip locked/lockedAt, never the grades themselves.
+          (
+            resource.data.locked == false
+            && request.resource.data.locked == true
+            && request.resource.data.grades == resource.data.grades
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['locked', 'lockedAt'])
+          )
+        );
+        allow delete: if false;
+      }
+
+      // ---------------------------------------------------------------------
+      // groups/{groupId}/voteStatus/{uid} — ALWAYS public within the group
+      // (locked: boolean only, never grade content). Lets any member see
+      // voting progress and know which uids are worth a full read attempt,
+      // without exposing anyone's actual grades — see FirebaseVoteDatastore.
+      // ---------------------------------------------------------------------
+      match /voteStatus/{uid} {
         function parentGroup() {
           return get(/databases/$(database)/documents/groups/$(groupId)).data;
         }
         function isGroupMember() {
           return isSignedIn() && (
-            userEmail() in parentGroup().rosterEmails || request.auth.uid == parentGroup().createdBy
+            request.auth.uid in parentGroup().memberUids || request.auth.uid == parentGroup().createdBy
           );
         }
 
@@ -130,55 +202,25 @@ service cloud.firestore {
         allow create: if isSignedIn()
           && request.auth.uid == uid
           && parentGroup().status == 'open'
-          && userEmail() in parentGroup().rosterEmails
-          && request.resource.data.email == userEmail()
-          && request.resource.data.keys().hasOnly(['email', 'submittedAt', 'rejectedServiceIds']);
-        allow update, delete: if false;
-
-        // groups/{groupId}/submissions/{uid}/grades/data — the actual 0..4
-        // grades for accepted services. Gated on: it's your own submission,
-        // OR you're the organizer (needed to run an organizer-forced early
-        // compute — see CloseSubmissionsUseCase), OR the whole roster has
-        // submitted. That last condition, once true, stays true forever
-        // (submissions are create-only and the roster is frozen), so it
-        // doubles as the permanent post-compute transparency gate with no
-        // separate status-based rule needed.
-        match /grades/data {
-          function canReadGrades() {
-            return request.auth.uid == uid
-              || request.auth.uid == parentGroup().createdBy
-              || parentGroup().submittedEmails.size() == parentGroup().roster.size();
-          }
-
-          allow get: if isSignedIn() && canReadGrades();
-          allow create: if isSignedIn()
-            && request.auth.uid == uid
-            && parentGroup().status == 'open'
-            && userEmail() in parentGroup().rosterEmails;
-          allow update, delete: if false;
-        }
+          && uid in parentGroup().memberUids
+          && request.resource.data.locked == false;
+        allow update: if isSignedIn()
+          && request.auth.uid == uid
+          && resource.data.locked == false
+          && request.resource.data.locked == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['locked']);
+        allow delete: if false;
       }
+    }
 
-      // ---------------------------------------------------------------------
-      // groups/{groupId}/result/final — create-once. Rules cannot verify the
-      // matching itself (see CLAUDE.md); the defence is that the computation
-      // is deterministic from frozen inputs and independently recomputable by
-      // any roster member, not that this document is provably correct.
-      // ---------------------------------------------------------------------
-      match /result/final {
-        function parentGroup() {
-          return get(/databases/$(database)/documents/groups/$(groupId)).data;
-        }
-
-        allow get: if isSignedIn() && (
-          userEmail() in parentGroup().rosterEmails || request.auth.uid == parentGroup().createdBy
-        );
-        allow create: if isSignedIn() && (
-          parentGroup().submittedEmails.size() == parentGroup().roster.size()
-          || request.auth.uid == parentGroup().createdBy
-        );
-        allow update, delete: if false;
-      }
+    // ---------------------------------------------------------------------
+    // users/{uid} — private per-user space. Currently just which groups this
+    // user has chosen to hide from their own "my groups" list (see
+    // SetGroupHiddenUseCase) — never affects membership, votes, or anyone
+    // else's view of anything.
+    // ---------------------------------------------------------------------
+    match /users/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
     }
   }
 }

@@ -1,14 +1,16 @@
 // Pure types for the matching engine. Deliberately decoupled from the rest of
 // the domain (plain string ids, numeric costs) so this module stays free of
 // Firebase/React imports and is trivial to unit test in isolation — see the
-// plan at the root of this repo. Translating GroupEntity/SubmissionEntity to
-// and from these types is the job of the application layer.
+// plan at the root of this repo. Translating GroupEntity/VoteEntity to and
+// from these types is the job of the application layer.
 
-// Acceptable grade costs are 0 (best) .. 4 (worst still assignable). A missing
-// entry in a student's costs map means "rejected": the matching engine must
-// never assign that student to that service, no matter how empty it is.
+// Grade costs are 0 (best) .. 3 (worst) — every grade is assignable, there is
+// no hard exclusion. A missing entry in a student's costs map is still
+// treated as excluded by the graph builder below (no edge is added), which
+// the current application layer never relies on since every pair always has
+// a grade — kept only because it's simpler than asserting completeness here.
 export const MIN_ACCEPTABLE_COST = 0
-export const MAX_ACCEPTABLE_COST = 4
+export const MAX_ACCEPTABLE_COST = 3
 
 export interface ServiceCapacity {
     serviceId: string
@@ -18,7 +20,7 @@ export interface ServiceCapacity {
 
 export interface StudentGrades {
     studentId: string
-    // serviceId -> cost (0..4). Absent key = rejected (hard exclude, not a cost).
+    // serviceId -> cost (0..3). Every service is expected to have an entry.
     costs: Map<string, number>
 }
 

@@ -1,22 +1,21 @@
 import { GroupEntity, GroupId, GroupNotFoundError, GroupRepository, PermissionError } from '@domain'
 import { SignInUseCase } from '@application'
 
-export interface UpdateGroupSettingsCommand {
+export interface AddRotationSlotCommand {
     groupId: GroupId
-    name?: string
 }
 
-export interface UpdateGroupSettingsResult {
+export interface AddRotationSlotResult {
     group: GroupEntity
 }
 
-export class UpdateGroupSettingsUseCase {
+export class AddRotationSlotUseCase {
     constructor(
         private readonly groupRepository: GroupRepository,
         private readonly signInUseCase: SignInUseCase
     ) {}
 
-    async execute(command: UpdateGroupSettingsCommand): Promise<UpdateGroupSettingsResult> {
+    async execute(command: AddRotationSlotCommand): Promise<AddRotationSlotResult> {
         const user = await this.signInUseCase.requireCurrentUser()
 
         const group = await this.groupRepository.findById(command.groupId)
@@ -24,12 +23,10 @@ export class UpdateGroupSettingsUseCase {
             throw new GroupNotFoundError()
         }
         if (!group.isCreator(user.id)) {
-            throw new PermissionError('Only the group creator can change its settings')
+            throw new PermissionError('Only the group creator can add rotations')
         }
 
-        const updatedGroup = group.updateSettings({
-            name: command.name
-        })
+        const updatedGroup = group.addRotationSlot()
 
         await this.groupRepository.save(updatedGroup)
 

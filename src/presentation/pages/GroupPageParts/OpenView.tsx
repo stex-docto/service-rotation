@@ -1,76 +1,158 @@
-import { useEffect, useState } from 'react'
-import { Box, Button, Heading, Progress, Text, VStack } from '@chakra-ui/react'
-import { Email, GroupEntity, SubmissionEntity } from '@domain'
+import { FormEvent, useEffect, useState } from 'react'
+import { Box, Button, Field, Heading, Input, Progress, Text, VStack } from '@chakra-ui/react'
+import { CurrentUser, GroupEntity, VoteEntity } from '@domain'
+import { ComputeResultResult } from '@application'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { LoadingScreen } from '@presentation/components/LoadingScreen'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
 import { ShareLink } from './ShareLink'
 import { GradeSheetForm } from './GradeSheetForm'
+import { LiveResultView } from './LiveResultView'
 
 interface OpenViewProps {
     group: GroupEntity
     isCreator: boolean
-    currentUserEmail: Email
+    currentUser: CurrentUser
 }
 
-export function OpenView({ group, isCreator, currentUserEmail }: OpenViewProps) {
-    const { getMySubmissionUseCase, closeSubmissionsUseCase, computeResultUseCase } =
-        useDependencies()
-    const isOnRoster = group.roster.has(currentUserEmail)
+export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
+    const {
+        joinGroupUseCase,
+        leaveGroupUseCase,
+        closeInviteUseCase,
+        reopenInviteUseCase,
+        getMyVoteUseCase,
+        getVotingProgressUseCase,
+        computeResultUseCase
+    } = useDependencies()
 
-    const [mySubmission, setMySubmission] = useState<SubmissionEntity | null>(null)
-    const [justSubmitted, setJustSubmitted] = useState(false)
-    const [loadingSubmission, setLoadingSubmission] = useState(isOnRoster)
-    const [closing, setClosing] = useState(false)
+    const isMember = group.isMember(currentUser.id)
+
+    const [displayName, setDisplayName] = useState(currentUser.displayName)
+    const [joining, setJoining] = useState(false)
+    const [leaving, setLeaving] = useState(false)
+    const [invitePending, setInvitePending] = useState(false)
+
+    const [myVote, setMyVote] = useState<VoteEntity | null>(null)
+    const [loadingVote, setLoadingVote] = useState(isMember)
+
+    const [progress, setProgress] = useState({
+        lockedCount: 0,
+        totalMembers: group.getMembers().length
+    })
+
+    const [computeResult, setComputeResult] = useState<ComputeResultResult | null>(null)
+    const [computing, setComputing] = useState(false)
+
     const [error, setError] = useState<string | null>(null)
 
-    useEffect(() => {
-        if (!isOnRoster) return
-        setLoadingSubmission(true)
-        getMySubmissionUseCase
+    function refreshMyVote() {
+        setLoadingVote(true)
+        return getMyVoteUseCase
             .execute({ groupId: group.id })
-            .then(result => setMySubmission(result.submission))
-            .finally(() => setLoadingSubmission(false))
-    }, [isOnRoster, group.id, getMySubmissionUseCase])
+            .then(result => setMyVote(result.vote))
+            .finally(() => setLoadingVote(false))
+    }
 
-    // Recovery: if the roster completed but nothing computed the result (the
-    // last submitter's tab closed mid-flight, say), whoever next opens the
-    // group retries — see ComputeResultUseCase.
     useEffect(() => {
-        if (group.allSubmitted()) {
-            computeResultUseCase.execute({ groupId: group.id }).catch(() => {
-                // Best-effort — the next viewer, or the organizer's "close
-                // early" button, will retry.
-            })
-        }
-    }, [group, computeResultUseCase])
+        if (!isMember) return
+        refreshMyVote()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isMember, group.id, getMyVoteUseCase])
 
-    async function closeEarly() {
-        setClosing(true)
+    useEffect(() => {
+        getVotingProgressUseCase
+            .execute({ groupId: group.id })
+            .then(result =>
+                setProgress({
+                    lockedCount: result.statuses.filter(status => status.locked).length,
+                    totalMembers: result.totalMembers
+                })
+            )
+            .catch(() => {
+                // Best-effort progress indicator — a failed read just leaves
+                // the previous count showing.
+            })
+    }, [group.id, getVotingProgressUseCase, myVote])
+
+    async function join(event: FormEvent) {
+        event.preventDefault()
+        setJoining(true)
         setError(null)
         try {
-            await closeSubmissionsUseCase.execute({ groupId: group.id })
+            await joinGroupUseCase.execute({ groupId: group.id, displayName: displayName.trim() })
         } catch (err) {
             setError(errorMessageFrom(err))
         } finally {
-            setClosing(false)
+            setJoining(false)
         }
     }
 
-    const submittedCount = group.submittedEmails.length
-    const rosterSize = group.roster.size
+    async function leave() {
+        setLeaving(true)
+        setError(null)
+        try {
+            await leaveGroupUseCase.execute({ groupId: group.id })
+        } catch (err) {
+            setError(errorMessageFrom(err))
+        } finally {
+            setLeaving(false)
+        }
+    }
+
+    async function toggleInvite() {
+        setInvitePending(true)
+        setError(null)
+        try {
+            if (group.inviteOpen) {
+                await closeInviteUseCase.execute({ groupId: group.id })
+            } else {
+                await reopenInviteUseCase.execute({ groupId: group.id })
+            }
+        } catch (err) {
+            setError(errorMessageFrom(err))
+        } finally {
+            setInvitePending(false)
+        }
+    }
+
+    async function computeNow() {
+        setComputing(true)
+        setError(null)
+        try {
+            const result = await computeResultUseCase.execute({ groupId: group.id })
+            setComputeResult(result)
+        } catch (err) {
+            setError(errorMessageFrom(err))
+        } finally {
+            setComputing(false)
+        }
+    }
+
+    // Auto-display once everyone currently in the group has locked a vote —
+    // no click needed for the common case. The manual button below still
+    // covers the provisional case (some members haven't voted yet) and lets
+    // anyone force a fresh recompute afterward.
+    useEffect(() => {
+        if (!myVote?.locked) return
+        if (progress.totalMembers === 0 || progress.lockedCount !== progress.totalMembers) return
+        if (computeResult || computing) return
+        computeNow()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [myVote?.locked, progress.lockedCount, progress.totalMembers])
 
     return (
         <VStack gap={6} align="stretch">
             <Box>
                 <Heading size="lg">{group.name}</Heading>
                 <Text colorPalette="gray">
-                    {submittedCount} / {rosterSize} internes ont soumis leurs notes.
+                    {progress.lockedCount} / {progress.totalMembers} membres ont verrouillé leur
+                    vote.
                 </Text>
                 <Progress.Root
-                    value={submittedCount}
-                    max={Math.max(rosterSize, 1)}
+                    value={progress.lockedCount}
+                    max={Math.max(progress.totalMembers, 1)}
                     mt={2}
                     colorPalette="blue"
                 >
@@ -80,45 +162,108 @@ export function OpenView({ group, isCreator, currentUserEmail }: OpenViewProps) 
                 </Progress.Root>
             </Box>
 
+            <ErrorMessage message={error} />
+
             {isCreator && (
                 <VStack gap={4} align="stretch" borderWidth="1px" borderRadius="md" p={4}>
                     <Heading size="sm">Administration</Heading>
                     <ShareLink groupId={group.id.value} />
-                    <ErrorMessage message={error} />
                     <Box>
                         <Button
-                            colorPalette="orange"
                             variant="outline"
-                            onClick={closeEarly}
-                            loading={closing}
+                            colorPalette={group.inviteOpen ? 'orange' : 'blue'}
+                            onClick={toggleInvite}
+                            loading={invitePending}
                         >
-                            Clôturer maintenant et calculer
+                            {group.inviteOpen ? "Fermer l'invitation" : "Rouvrir l'invitation"}
                         </Button>
                         <Text fontSize="xs" colorPalette="gray" mt={2}>
-                            Les internes n'ayant pas encore soumis seront traités comme indifférents
-                            à tous les services (aucun favori, aucun refus).
+                            {group.inviteOpen
+                                ? "Tant que l'invitation est ouverte, quiconque a le lien peut rejoindre le groupe."
+                                : 'Plus personne ne peut rejoindre le groupe avec ce lien.'}
                         </Text>
                     </Box>
                 </VStack>
             )}
 
-            {isOnRoster &&
-                (loadingSubmission ? (
-                    <LoadingScreen />
-                ) : mySubmission || justSubmitted ? (
-                    <Box borderWidth="1px" borderRadius="md" p={4}>
-                        <Heading size="sm" mb={2}>
-                            Notes déjà soumises
-                        </Heading>
+            {!isMember && (
+                <Box as="form" onSubmit={join} borderWidth="1px" borderRadius="md" p={4}>
+                    <Heading size="sm" mb={3}>
+                        Rejoindre ce groupe
+                    </Heading>
+                    {!group.inviteOpen ? (
                         <Text colorPalette="gray">
-                            Merci ! Vos notes sont enregistrées définitivement. Le résultat sera
-                            calculé automatiquement une fois que tout le monde aura soumis les
-                            siennes.
+                            Ce groupe n'accepte plus de nouveaux membres.
                         </Text>
-                    </Box>
+                    ) : (
+                        <VStack gap={3} align="stretch">
+                            <Field.Root required>
+                                <Field.Label>Votre nom</Field.Label>
+                                <Input
+                                    value={displayName}
+                                    onChange={event => setDisplayName(event.target.value)}
+                                    required
+                                />
+                            </Field.Root>
+                            <Button
+                                type="submit"
+                                colorPalette="blue"
+                                loading={joining}
+                                alignSelf="flex-start"
+                            >
+                                Rejoindre
+                            </Button>
+                        </VStack>
+                    )}
+                </Box>
+            )}
+
+            {isMember &&
+                (loadingVote ? (
+                    <LoadingScreen />
+                ) : myVote?.locked ? (
+                    !computeResult && (
+                        <Box borderWidth="1px" borderRadius="md" p={4}>
+                            <Heading size="sm" mb={2}>
+                                Vote verrouillé
+                            </Heading>
+                            <Text colorPalette="gray">
+                                Votre vote est enregistré définitivement. Vous pouvez maintenant
+                                voir les résultats calculés à partir des votes déjà verrouillés.
+                            </Text>
+                        </Box>
+                    )
                 ) : (
-                    <GradeSheetForm group={group} onSubmitted={() => setJustSubmitted(true)} />
+                    <GradeSheetForm group={group} existingVote={myVote} onChanged={refreshMyVote} />
                 ))}
+
+            {isMember && !myVote?.locked && (
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Text colorPalette="gray" fontSize="sm">
+                        Vous pouvez quitter ce groupe tant que votre vote n'est pas verrouillé.
+                    </Text>
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        colorPalette="red"
+                        onClick={leave}
+                        loading={leaving}
+                        mt={2}
+                    >
+                        Quitter le groupe
+                    </Button>
+                </Box>
+            )}
+
+            {myVote?.locked && !computeResult && (
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Button colorPalette="blue" onClick={computeNow} loading={computing}>
+                        Voir les résultats
+                    </Button>
+                </Box>
+            )}
+
+            {computeResult && <LiveResultView group={group} computeResult={computeResult} />}
         </VStack>
     )
 }

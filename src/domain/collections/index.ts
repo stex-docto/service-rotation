@@ -1,2 +1,2 @@
 export * from './ServiceSet'
-export * from './RosterSet'
+export * from './MemberSet'

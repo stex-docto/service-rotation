@@ -1,4 +1,4 @@
 export type { GroupRepository } from './GroupRepository'
-export type { SubmissionRepository, SubmissionMetadata } from './SubmissionRepository'
-export type { ResultRepository } from './ResultRepository'
+export type { VoteRepository, VoteStatus } from './VoteRepository'
+export type { UserPreferencesRepository } from './UserPreferencesRepository'
 export type { UserRepository, CurrentUser } from './UserRepository'

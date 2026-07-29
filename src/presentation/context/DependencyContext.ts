@@ -1,21 +1,27 @@
 import { createContext } from 'react'
 import {
-    AddRosterEntryUseCase,
+    AddRotationSlotUseCase,
     AddServiceUseCase,
-    CloseSubmissionsUseCase,
+    CloseInviteUseCase,
     ComputeResultUseCase,
     CreateGroupUseCase,
-    GetAllSubmissionsUseCase,
     GetGroupUseCase,
     GetMyGroupsUseCase,
-    GetMySubmissionUseCase,
-    GetResultUseCase,
-    OpenSubmissionsUseCase,
-    RemoveRosterEntryUseCase,
+    GetMyVoteUseCase,
+    GetVotingProgressUseCase,
+    JoinGroupUseCase,
+    LeaveGroupUseCase,
+    LockVoteUseCase,
+    OpenGroupUseCase,
+    RemoveRotationSlotUseCase,
+    ReopenInviteUseCase,
     RemoveServiceUseCase,
+    SaveVoteDraftUseCase,
+    SetGroupHiddenUseCase,
+    SetRotationModeUseCase,
     SignInUseCase,
-    SubmitGradesUseCase,
     UpdateGroupSettingsUseCase,
+    UpdateRotationSlotUseCase,
     UpdateServiceUseCase
 } from '@application'
 
@@ -26,17 +32,23 @@ export interface DependencyContext {
     addServiceUseCase: AddServiceUseCase
     updateServiceUseCase: UpdateServiceUseCase
     removeServiceUseCase: RemoveServiceUseCase
-    addRosterEntryUseCase: AddRosterEntryUseCase
-    removeRosterEntryUseCase: RemoveRosterEntryUseCase
-    openSubmissionsUseCase: OpenSubmissionsUseCase
-    submitGradesUseCase: SubmitGradesUseCase
+    addRotationSlotUseCase: AddRotationSlotUseCase
+    removeRotationSlotUseCase: RemoveRotationSlotUseCase
+    updateRotationSlotUseCase: UpdateRotationSlotUseCase
+    setRotationModeUseCase: SetRotationModeUseCase
+    openGroupUseCase: OpenGroupUseCase
+    joinGroupUseCase: JoinGroupUseCase
+    leaveGroupUseCase: LeaveGroupUseCase
+    closeInviteUseCase: CloseInviteUseCase
+    reopenInviteUseCase: ReopenInviteUseCase
+    saveVoteDraftUseCase: SaveVoteDraftUseCase
+    lockVoteUseCase: LockVoteUseCase
     computeResultUseCase: ComputeResultUseCase
-    closeSubmissionsUseCase: CloseSubmissionsUseCase
+    getVotingProgressUseCase: GetVotingProgressUseCase
     getGroupUseCase: GetGroupUseCase
-    getResultUseCase: GetResultUseCase
-    getMySubmissionUseCase: GetMySubmissionUseCase
-    getAllSubmissionsUseCase: GetAllSubmissionsUseCase
+    getMyVoteUseCase: GetMyVoteUseCase
     getMyGroupsUseCase: GetMyGroupsUseCase
+    setGroupHiddenUseCase: SetGroupHiddenUseCase
 }
 
 export const Dependencies = createContext<DependencyContext | undefined>(undefined)

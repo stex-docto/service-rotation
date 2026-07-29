@@ -7,6 +7,10 @@ export class SignInUseCase {
         return this.userRepository.signInWithGoogle()
     }
 
+    async signInAnonymously(): Promise<CurrentUser> {
+        return this.userRepository.signInAnonymously()
+    }
+
     async signOut(): Promise<void> {
         return this.userRepository.signOut()
     }

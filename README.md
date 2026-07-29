@@ -15,32 +15,44 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
 ## Features
 
 - **Organizer**: create a group, define services (name, capacity per
-  rotation) and rotation count, add interns by email, open submissions, share
-  one link.
-- **Interns**: sign in with Google, grade every service on a 6-level scale,
-  submit once — no edits afterward.
-- **Automatic computation**: the moment every intern has submitted, whichever
-  browser observes it computes and publishes the result. No admin action
-  required (though the organizer can force an early close for stragglers).
-- **Transparency**: once complete, everyone's grades become visible to the
-  whole group — the fairness of the result is verifiable, not asserted.
+  rotation) and rotations (added/removed one at a time, like services —
+  either named freely or given a calendar date range, never both at once),
+  open the group, share one link. That's the whole organizer role — no
+  roster to pre-populate, no privileged access to anyone's grades once the
+  group is open.
+- **Interns**: sign in with Google, open the link, join with a display name
+  (no pre-registration), grade every service on a 4-level scale, save the
+  draft as many times as you like, then lock your vote once — no edits
+  afterward.
+- **On-demand computation**: anyone whose own vote is locked can compute the
+  result at any time, locally, from whichever other members' votes are
+  currently readable. There is no stored "final" document — every computation
+  is a pure function of the current votes, so it's provisional until every
+  member has voted and the invite is closed, and stable (byte-identical on
+  every future recompute) after.
+- **Transparency**: locking your own vote is what unlocks reading anyone
+  else's — mutual, symmetric, no exceptions for the organizer. Fairness is
+  verified by recomputing, never taken on trust.
 
 ## Mechanism
 
-1. **Input**: each intern grades every service once — Excellent, Très bien,
-   Bien, Passable, Insuffisant, or À rejeter (hard veto, capped per group).
-   One sheet drives every rotation; a student never repeats a service.
+1. **Input**: each intern grades every service once — Excellent, Bien,
+   Indifférent, or Passable. Every grade is assignable; there is no veto and
+   no cap. One sheet drives every rotation; a student never repeats a service.
 2. **Phase 1 — min-cost flow** picks each student's set of `k` (=rotations)
    distinct services, minimising the worst grade anyone receives first
-   (binary search over the 5 acceptable levels), then the total among
-   solutions tied on that worst grade.
+   (binary search over the 4 levels), then the total among solutions tied on
+   that worst grade.
 3. **Phase 2 — bipartite edge colouring** schedules that fixed service set
    into `k` rotations respecting per-rotation capacity. Always succeeds once
    phase 1 does — see `src/domain/matching/edgeColouring.ts`.
-4. **Determinism**: a random tie-break lottery is committed to the group
-   *before* submissions open and frozen forever after. The whole computation
-   is a pure function of (frozen roster, frozen lottery, submitted grades),
-   so any participant can recompute it and check the published result matches.
+4. **Determinism**: the tie-break lottery is derived from the votes
+   themselves — a hash of each vote's content (who, and what they graded),
+   never of when they voted or which group happened to contain them (see
+   `src/domain/lottery.ts`). Two different groups with the same members
+   casting the same grades produce the identical seed, order, and assignment.
+   Nobody can act on the resulting order: by the time anyone can compute
+   anything, their own vote must already be locked and unchangeable.
 
 ### What is and isn't guaranteed
 
@@ -52,15 +64,15 @@ and buys back most — not all — of the honesty:
   rotation for imprecision in the others. How costly that trade is depends on
   `rotations / serviceCount` and on capacity slack — it is **not** a general
   "multi-rotation makes lying self-punishing" guarantee.
-- Rejections are the exception: capped and privacy-preserving. Every
-  submission runs a feasibility preflight using real rejection sets from
-  everyone who has already submitted (public — see below) plus the
-  candidate's own, so a combination that would strand the group is refused at
-  submit time, not discovered after the roster is frozen.
+- There is no veto any more, and so no submit-time feasibility preflight to
+  speak of: every grade is a cost, never a hard exclusion, so a computable
+  assignment always exists once there's enough raw capacity for however many
+  members have currently voted.
 - Rules cannot verify the matching itself (too complex for the rules
   language). The defence is that computation is deterministic and
-  independently recomputable by any roster member — not that any single
-  document is provably correct.
+  independently recomputable by any member — not that any single document is
+  provably correct. There is, in fact, no document to be correct: results are
+  never stored (see "Data model & security model" below).
 
 ## Architecture
 
@@ -86,31 +98,45 @@ case.
 See `firebase/firestore.rules` (heavily commented) for the authoritative
 version. Summary:
 
-- **Lifecycle**: `groups/{groupId}` moves `draft → open → computed`. Opening
-  freezes services, roster, and the lottery. Each transition, and the
-  append-only `submittedEmails` growth during `open`, is its own rule clause.
-- **Submissions split into two documents**: `submissions/{uid}` (email,
-  timestamp, **rejected service IDs** — always listable by the roster) and
-  `submissions/{uid}/grades/data` (the actual 0–4 grades, gated on being the
-  submitter, the organizer, or the whole roster having submitted). Rejections
-  reveal a veto, never a preference among accepted services, so they're safe
-  to keep public — that's what makes the feasibility preflight both accurate
-  and privacy-preserving.
-- **Concurrency**: submitting is a Firestore *transaction*, not a batch —
-  two interns submitting within milliseconds both append to the same
-  `submittedEmails` array, and a batch would let the second writer's stale
-  read get silently rejected. `result/final` is create-once; a losing
-  concurrent compute reads back the winner's document instead of erroring.
+- **Lifecycle**: `groups/{groupId}` moves `draft → open` — that's it, no
+  third "computed" state. Opening freezes services and rotations forever;
+  membership stays open (self-service join/leave) until the creator closes
+  the invite (`inviteOpen: false`), the one privilege they keep post-open.
+- **Identity is uid-only, never email.** Membership, votes, and the invite
+  mechanism never reference anyone's email address. The group's own id
+  (`crypto.randomUUID()`, unguessable, and groups are never listable by
+  non-members) *is* the invite: opening the link and joining requires no
+  organizer approval and no pre-registration.
+- **Votes are split into two documents**: `votes/{uid}` (the actual grades —
+  freely editable while unlocked, one-way `locked` transition, readable by
+  another member only if *that member's own vote is also locked*, with no
+  exception for the creator) and `voteStatus/{uid}` (`locked: boolean` only,
+  always public within the group — lets anyone see voting progress without
+  learning anyone's actual grades).
+- **No stored result.** `ComputeResultUseCase` reads whichever votes are
+  currently readable and runs the algorithm locally, live, every time it's
+  called — there is no `result/final` document, no create-once race, and no
+  organizer-forced early close. Two people calling it at different moments
+  may legitimately see different assignments if membership or votes changed
+  in between; the result is stable only once the invite is closed and every
+  remaining member has voted.
+- **Concurrency**: joining and leaving are Firestore *transactions*, not
+  plain writes — two members acting within milliseconds of each other both
+  append to the same `memberUids` array, and a plain overwrite would let the
+  second writer's stale read silently clobber the first.
 
 ### Known, accepted trust gaps
 
-- A participant can append their own email to `submittedEmails` without a
-  real submission underneath. This is self-harming only (they get treated as
-  indifferent) — it cannot affect anyone else's outcome.
-- The organizer can read all grades at any time (needed to run an early
-  close with stragglers). Everyone else waits until the roster completes.
-- A single shared link lets anyone claim any roster name on first sign-in in
-  principle, though Google auth ties every submission to a real account.
+- A member can leave the group at any time before locking their vote — this
+  is fully self-service and by design, not a gap.
+- A group with a permanent non-voter (joined, never locks) can only ever
+  produce a provisional result excluding them — there is no deadline or
+  override. Anyone can still compute a "result so far" at any time; nothing
+  forces the group toward a stable final state except the creator closing
+  the invite and everyone remaining actually voting.
+- Two services sharing the same name within one group collide in the lottery
+  seed's hash (see `src/domain/lottery.ts`) — harmless to the lottery's
+  validity, just not perfectly reproducible in that specific edge case.
 
 ## Development
 
@@ -135,8 +161,11 @@ config only ever lives in the `ENV_FILE` GitHub Actions secret, used by
 
 Repeat steps 1–2 for both the dev and prod Firebase projects.
 
-1. Create a Firebase project. Enable **Google** sign-in only under
-   Authentication.
+1. Create a Firebase project. Enable **Google** sign-in under Authentication
+   for both projects. On the **dev** project only, also enable **Anonymous**
+   sign-in — it powers the "continue as guest" option (visible only when
+   `import.meta.env.DEV` is true) that lets developers spin up multiple fake
+   accounts locally without real Google accounts. Never enable it on prod.
 2. Create a Firestore database (production mode).
 3. Set the dev and prod project IDs in `firebase/.firebaserc`, then deploy
    rules/indexes to each: `make firebase.deploy.dev` and

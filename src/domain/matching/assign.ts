@@ -132,13 +132,13 @@ export function computeAssignment(input: MatchingInput): MatchingResult {
 
     if (!feasibleAt(MAX_ACCEPTABLE_COST)) {
         throw new InfeasibleError(
-            'No assignment exists that gives every student their required number of distinct, non-rejected services. ' +
-                'Increase capacity, add services, or lower the rejection cap.'
+            'No assignment exists that gives every student their required number of distinct services. ' +
+                'Increase capacity or add services.'
         )
     }
 
-    // Binary search the minimal achievable worst-case grade. At most 3 probes
-    // over the 5 acceptable levels (0..4).
+    // Binary search the minimal achievable worst-case grade. At most 2 probes
+    // over the 4 acceptable levels (0..3).
     let low = MIN_ACCEPTABLE_COST
     let high = MAX_ACCEPTABLE_COST
     while (low < high) {
@@ -189,56 +189,19 @@ export function computeAssignment(input: MatchingInput): MatchingResult {
     }
 }
 
-// Feasibility only — no minimax search, no phase 2 scheduling. Used by
-// SubmitGradesUseCase's preflight check, which runs on every submission and
-// only needs a yes/no answer, not the assignment itself.
-export function isAssignmentFeasible(input: MatchingInput): boolean {
-    const n = input.lotteryOrder.length
-    const targetFlow = n * input.rotations
-    const rankOf = new Map(input.lotteryOrder.map((id, index) => [id, index]))
-    const orderedServices = [...input.services].sort((a, b) =>
-        a.serviceId.localeCompare(b.serviceId)
-    )
-    const tieBreakScale = tieBreakScaleFor(input)
-
-    const network = buildNetwork(input, orderedServices, rankOf, MAX_ACCEPTABLE_COST, tieBreakScale)
-    const { flow } = network.graph.minCostFlow(network.source, network.sink, targetFlow)
-    return flow === targetFlow
-}
-
-// Structural feasibility check for OpenSubmissionsUseCase, run BEFORE any
-// grades exist. Uses a fully indifferent placeholder (every service costs 0,
-// nothing rejected) so it only catches capacity/scheduling infeasibility —
-// e.g. enough total capacity but badly distributed across services, which
-// simple arithmetic ("total capacity >= roster size") misses entirely. It
-// cannot anticipate real rejections submitted later; that is a deliberate,
-// documented limitation, not an oversight.
+// Structural feasibility check, independent of any votes: whether there are
+// even enough distinct services to fill every rotation. Grade-driven
+// infeasibility (not enough capacity for how many members actually voted) is
+// instead discovered by computeAssignment itself, at compute time, over
+// whoever's votes are readable then — there is no fixed roster to check this
+// against upfront any more, since membership is open until the owner closes
+// the invite.
 export function checkStructuralFeasibility(
     services: ServiceCapacity[],
-    rotations: number,
-    rosterEmails: string[]
+    rotations: number
 ): { feasible: boolean; reason?: string } {
     if (services.length < rotations) {
         return { feasible: false, reason: 'There must be at least as many services as rotations.' }
     }
-
-    const placeholderInput: MatchingInput = {
-        rotations,
-        services,
-        students: rosterEmails.map(email => ({
-            studentId: email,
-            costs: new Map(services.map(service => [service.serviceId, 0]))
-        })),
-        lotteryOrder: rosterEmails
-    }
-
-    try {
-        computeAssignment(placeholderInput)
-        return { feasible: true }
-    } catch (error) {
-        if (error instanceof InfeasibleError) {
-            return { feasible: false, reason: error.message }
-        }
-        throw error
-    }
+    return { feasible: true }
 }

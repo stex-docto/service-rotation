@@ -1,27 +1,33 @@
 import React, { useState } from 'react'
-import { GroupRepository, ResultRepository, SubmissionRepository, UserRepository } from '@domain'
+import { GroupRepository, UserPreferencesRepository, UserRepository, VoteRepository } from '@domain'
 import {
-    AddRosterEntryUseCase,
+    AddRotationSlotUseCase,
     AddServiceUseCase,
-    CloseSubmissionsUseCase,
+    CloseInviteUseCase,
     ComputeResultUseCase,
     CreateGroupUseCase,
-    GetAllSubmissionsUseCase,
     GetGroupUseCase,
     GetMyGroupsUseCase,
-    GetMySubmissionUseCase,
-    GetResultUseCase,
-    OpenSubmissionsUseCase,
-    RemoveRosterEntryUseCase,
+    GetMyVoteUseCase,
+    GetVotingProgressUseCase,
+    JoinGroupUseCase,
+    LeaveGroupUseCase,
+    LockVoteUseCase,
+    OpenGroupUseCase,
+    RemoveRotationSlotUseCase,
+    ReopenInviteUseCase,
     RemoveServiceUseCase,
+    SaveVoteDraftUseCase,
+    SetGroupHiddenUseCase,
+    SetRotationModeUseCase,
     SignInUseCase,
-    SubmitGradesUseCase,
     UpdateGroupSettingsUseCase,
+    UpdateRotationSlotUseCase,
     UpdateServiceUseCase
 } from '@application'
 import { FirebaseGroupDatastore } from '@infrastructure/datastores/FirebaseGroupDatastore'
-import { FirebaseSubmissionDatastore } from '@infrastructure/datastores/FirebaseSubmissionDatastore'
-import { FirebaseResultDatastore } from '@infrastructure/datastores/FirebaseResultDatastore'
+import { FirebaseVoteDatastore } from '@infrastructure/datastores/FirebaseVoteDatastore'
+import { FirebaseUserPreferencesDatastore } from '@infrastructure/datastores/FirebaseUserPreferencesDatastore'
 import { FirebaseUserDatastore } from '@infrastructure/datastores/FirebaseUserDatastore'
 import { Firebase } from '@infrastructure/firebase'
 import { Dependencies, DependencyContext } from './DependencyContext'
@@ -38,11 +44,9 @@ function initDependencies(): DependencyContext {
         firebase.firestore,
         firebase.auth
     )
-    const submissionRepository: SubmissionRepository = new FirebaseSubmissionDatastore(
-        firebase.firestore,
-        firebase.auth
-    )
-    const resultRepository: ResultRepository = new FirebaseResultDatastore(firebase.firestore)
+    const voteRepository: VoteRepository = new FirebaseVoteDatastore(firebase.firestore)
+    const userPreferencesRepository: UserPreferencesRepository =
+        new FirebaseUserPreferencesDatastore(firebase.firestore)
 
     const signInUseCase = new SignInUseCase(userRepository)
     const createGroupUseCase = new CreateGroupUseCase(groupRepository, signInUseCase)
@@ -53,27 +57,38 @@ function initDependencies(): DependencyContext {
     const addServiceUseCase = new AddServiceUseCase(groupRepository, signInUseCase)
     const updateServiceUseCase = new UpdateServiceUseCase(groupRepository, signInUseCase)
     const removeServiceUseCase = new RemoveServiceUseCase(groupRepository, signInUseCase)
-    const addRosterEntryUseCase = new AddRosterEntryUseCase(groupRepository, signInUseCase)
-    const removeRosterEntryUseCase = new RemoveRosterEntryUseCase(groupRepository, signInUseCase)
-    const openSubmissionsUseCase = new OpenSubmissionsUseCase(groupRepository, signInUseCase)
-    const computeResultUseCase = new ComputeResultUseCase(
+    const addRotationSlotUseCase = new AddRotationSlotUseCase(groupRepository, signInUseCase)
+    const removeRotationSlotUseCase = new RemoveRotationSlotUseCase(groupRepository, signInUseCase)
+    const updateRotationSlotUseCase = new UpdateRotationSlotUseCase(groupRepository, signInUseCase)
+    const setRotationModeUseCase = new SetRotationModeUseCase(groupRepository, signInUseCase)
+    const openGroupUseCase = new OpenGroupUseCase(groupRepository, signInUseCase)
+    const joinGroupUseCase = new JoinGroupUseCase(groupRepository, signInUseCase)
+    const leaveGroupUseCase = new LeaveGroupUseCase(groupRepository, voteRepository, signInUseCase)
+    const closeInviteUseCase = new CloseInviteUseCase(groupRepository, signInUseCase)
+    const reopenInviteUseCase = new ReopenInviteUseCase(groupRepository, signInUseCase)
+    const saveVoteDraftUseCase = new SaveVoteDraftUseCase(
         groupRepository,
-        submissionRepository,
-        resultRepository,
+        voteRepository,
         signInUseCase
     )
-    const submitGradesUseCase = new SubmitGradesUseCase(
+    const lockVoteUseCase = new LockVoteUseCase(voteRepository, signInUseCase)
+    const computeResultUseCase = new ComputeResultUseCase(
         groupRepository,
-        submissionRepository,
-        signInUseCase,
-        computeResultUseCase
+        voteRepository,
+        signInUseCase
     )
-    const closeSubmissionsUseCase = new CloseSubmissionsUseCase(computeResultUseCase)
+    const getVotingProgressUseCase = new GetVotingProgressUseCase(groupRepository, voteRepository)
     const getGroupUseCase = new GetGroupUseCase(groupRepository)
-    const getResultUseCase = new GetResultUseCase(resultRepository)
-    const getMySubmissionUseCase = new GetMySubmissionUseCase(submissionRepository, signInUseCase)
-    const getAllSubmissionsUseCase = new GetAllSubmissionsUseCase(submissionRepository)
-    const getMyGroupsUseCase = new GetMyGroupsUseCase(groupRepository, signInUseCase)
+    const getMyVoteUseCase = new GetMyVoteUseCase(voteRepository, signInUseCase)
+    const getMyGroupsUseCase = new GetMyGroupsUseCase(
+        groupRepository,
+        userPreferencesRepository,
+        signInUseCase
+    )
+    const setGroupHiddenUseCase = new SetGroupHiddenUseCase(
+        userPreferencesRepository,
+        signInUseCase
+    )
 
     return {
         signInUseCase,
@@ -82,17 +97,23 @@ function initDependencies(): DependencyContext {
         addServiceUseCase,
         updateServiceUseCase,
         removeServiceUseCase,
-        addRosterEntryUseCase,
-        removeRosterEntryUseCase,
-        openSubmissionsUseCase,
-        submitGradesUseCase,
+        addRotationSlotUseCase,
+        removeRotationSlotUseCase,
+        updateRotationSlotUseCase,
+        setRotationModeUseCase,
+        openGroupUseCase,
+        joinGroupUseCase,
+        leaveGroupUseCase,
+        closeInviteUseCase,
+        reopenInviteUseCase,
+        saveVoteDraftUseCase,
+        lockVoteUseCase,
         computeResultUseCase,
-        closeSubmissionsUseCase,
+        getVotingProgressUseCase,
         getGroupUseCase,
-        getResultUseCase,
-        getMySubmissionUseCase,
-        getAllSubmissionsUseCase,
-        getMyGroupsUseCase
+        getMyVoteUseCase,
+        getMyGroupsUseCase,
+        setGroupHiddenUseCase
     }
 }
 

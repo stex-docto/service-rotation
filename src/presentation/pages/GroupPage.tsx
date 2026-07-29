@@ -5,9 +5,9 @@ import { GroupEntity, GroupId } from '@domain'
 import { useCurrentUser } from '@presentation/hooks/useCurrentUser'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { LoadingScreen } from '@presentation/components/LoadingScreen'
+import { GuestSignInButton } from '@presentation/components/GuestSignInButton'
 import { DraftAdminView } from './GroupPageParts/DraftAdminView'
 import { OpenView } from './GroupPageParts/OpenView'
-import { ComputedResultView } from './GroupPageParts/ComputedResultView'
 
 export default function GroupPage() {
     const { groupId } = useParams<{ groupId: string }>()
@@ -37,6 +37,7 @@ export default function GroupPage() {
                 <Button colorPalette="blue" onClick={() => signInUseCase.signInWithGoogle()}>
                     Se connecter avec Google
                 </Button>
+                <GuestSignInButton />
             </VStack>
         )
     }
@@ -45,7 +46,7 @@ export default function GroupPage() {
         return (
             <VStack py={16} textAlign="center">
                 <Text colorPalette="gray">
-                    Ce groupe n'existe pas, ou vous n'y avez pas accès avec ce compte Google.
+                    Ce groupe n'existe pas, ou vous n'y avez pas accès avec ce compte.
                 </Text>
             </VStack>
         )
@@ -66,9 +67,7 @@ export default function GroupPage() {
         return <DraftAdminView group={group} />
     }
 
-    if (group.status === 'open') {
-        return <OpenView group={group} isCreator={isCreator} currentUserEmail={user.email} />
-    }
-
-    return <ComputedResultView group={group} />
+    // Membership and voting are uid-based throughout — a guest (anonymous)
+    // session works exactly like a Google one here, no email needed.
+    return <OpenView group={group} isCreator={isCreator} currentUser={user} />
 }

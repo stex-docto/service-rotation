@@ -1,30 +1,21 @@
-import {
-    GroupEntity,
-    GroupId,
-    GroupNotFoundError,
-    GroupRepository,
-    PermissionError,
-    RosterEntry
-} from '@domain'
+import { GroupEntity, GroupId, GroupNotFoundError, GroupRepository, PermissionError } from '@domain'
 import { SignInUseCase } from '@application'
 
-export interface AddRosterEntryCommand {
+export interface ReopenInviteCommand {
     groupId: GroupId
-    email: string
-    displayName: string
 }
 
-export interface AddRosterEntryResult {
+export interface ReopenInviteResult {
     group: GroupEntity
 }
 
-export class AddRosterEntryUseCase {
+export class ReopenInviteUseCase {
     constructor(
         private readonly groupRepository: GroupRepository,
         private readonly signInUseCase: SignInUseCase
     ) {}
 
-    async execute(command: AddRosterEntryCommand): Promise<AddRosterEntryResult> {
+    async execute(command: ReopenInviteCommand): Promise<ReopenInviteResult> {
         const user = await this.signInUseCase.requireCurrentUser()
 
         const group = await this.groupRepository.findById(command.groupId)
@@ -32,11 +23,10 @@ export class AddRosterEntryUseCase {
             throw new GroupNotFoundError()
         }
         if (!group.isCreator(user.id)) {
-            throw new PermissionError('Only the group creator can edit the roster')
+            throw new PermissionError('Only the group creator can reopen the invite')
         }
 
-        const entry = RosterEntry.create(command.email, command.displayName)
-        const updatedGroup = group.addRosterEntry(entry)
+        const updatedGroup = group.reopenInvite()
 
         await this.groupRepository.save(updatedGroup)
 

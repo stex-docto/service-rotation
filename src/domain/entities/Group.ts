@@ -1,36 +1,44 @@
 import {
-    Email,
     GroupId,
-    RosterEntry,
-    RosterSet,
+    MemberEntry,
+    MemberSet,
     ServiceEntity,
     ServiceId,
     ServiceSet,
     UserId
 } from '@domain'
 
-export type GroupStatus = 'draft' | 'open' | 'computed'
+export type GroupStatus = 'draft' | 'open'
+
+// Either 'name' the rotation slots yourself (e.g. "Automne") or attach a
+// calendar date range to each — never both displayed at once. Purely
+// cosmetic: the matching engine only ever cares how many slots there are.
+export type RotationMode = 'name' | 'date'
+
+export interface RotationSlot {
+    name: string | null
+    startDate: string | null
+    endDate: string | null
+}
+
+function emptyRotationSlot(): RotationSlot {
+    return { name: null, startDate: null, endDate: null }
+}
 
 export interface Group {
     id: GroupId
     name: string
-    rotations: number
     status: GroupStatus
     services: ServiceSet
-    roster: RosterSet
-    // null until open() resolves it to a concrete number — see open() for why
-    // a bare default of 0 would leave the whole rejection mechanism inert.
-    maxRejections: number | null
-    // Frozen at open() — the source of tie-break determinism. Never regenerated.
-    lotterySeed: string | null
-    lotteryOrder: string[] | null
-    // Grows one email at a time while open (see recordSubmission). Never
-    // shrinks — that monotonicity is what lets "everyone has submitted" also
-    // serve as the permanent transparency gate once reached (see
-    // firestore.rules): no separate compute-vs-transparency distinction needed.
-    submittedEmails: string[]
+    members: MemberSet
+    rotationSlots: RotationSlot[]
+    rotationMode: RotationMode
+    // Whether the invite link still accepts new self-joins. Meaningless while
+    // 'draft' (nobody can join yet regardless). Only the creator can close
+    // it — see closeInvite — but it's group configuration, not a standing
+    // privilege over anyone's vote: closing it only stops new joins.
+    inviteOpen: boolean
     createdBy: UserId
-    createdByEmail: Email
     createdDate: Date
 }
 
@@ -38,43 +46,33 @@ export class GroupEntity implements Group {
     constructor(
         public readonly id: GroupId,
         public readonly name: string,
-        public readonly rotations: number,
         public readonly status: GroupStatus,
         public readonly services: ServiceSet,
-        public readonly roster: RosterSet,
-        public readonly maxRejections: number | null,
-        public readonly lotterySeed: string | null,
-        public readonly lotteryOrder: string[] | null,
-        public readonly submittedEmails: string[],
+        public readonly members: MemberSet,
+        public readonly rotationSlots: RotationSlot[],
+        public readonly rotationMode: RotationMode,
+        public readonly inviteOpen: boolean,
         public readonly createdBy: UserId,
-        public readonly createdByEmail: Email,
         public readonly createdDate: Date
     ) {}
 
-    static create(
-        name: string,
-        rotations: number,
-        createdBy: UserId,
-        createdByEmail: Email,
-        id?: GroupId
-    ): GroupEntity {
-        if (rotations < 1) {
-            throw new Error('A group needs at least one rotation')
-        }
+    // How many rotations each member goes through — always exactly the
+    // number of slots, never tracked separately, so the two can never drift.
+    get rotations(): number {
+        return this.rotationSlots.length
+    }
 
+    static create(name: string, createdBy: UserId, id?: GroupId): GroupEntity {
         return new GroupEntity(
             id || GroupId.generate(),
             name,
-            rotations,
             'draft',
             new ServiceSet(),
-            new RosterSet(),
-            null,
-            null,
-            null,
+            new MemberSet(),
             [],
+            'name',
+            true,
             createdBy,
-            createdByEmail,
             new Date()
         )
     }
@@ -85,36 +83,19 @@ export class GroupEntity implements Group {
         }
     }
 
-    updateSettings(options: {
-        name?: string
-        rotations?: number
-        maxRejections?: number
-    }): GroupEntity {
+    updateSettings(options: { name?: string }): GroupEntity {
         this.requireDraft('update settings')
-
-        const rotations = options.rotations ?? this.rotations
-        if (rotations < 1) {
-            throw new Error('A group needs at least one rotation')
-        }
-
-        const maxRejections = options.maxRejections ?? this.maxRejections
-        if (maxRejections !== null && maxRejections < 0) {
-            throw new Error('maxRejections cannot be negative')
-        }
 
         return new GroupEntity(
             this.id,
             options.name ?? this.name,
-            rotations,
             this.status,
             this.services,
-            this.roster,
-            maxRejections,
-            this.lotterySeed,
-            this.lotteryOrder,
-            this.submittedEmails,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            this.inviteOpen,
             this.createdBy,
-            this.createdByEmail,
             this.createdDate
         )
     }
@@ -125,16 +106,13 @@ export class GroupEntity implements Group {
         return new GroupEntity(
             this.id,
             this.name,
-            this.rotations,
             this.status,
             this.services.add(service),
-            this.roster,
-            this.maxRejections,
-            this.lotterySeed,
-            this.lotteryOrder,
-            this.submittedEmails,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            this.inviteOpen,
             this.createdBy,
-            this.createdByEmail,
             this.createdDate
         )
     }
@@ -148,16 +126,13 @@ export class GroupEntity implements Group {
         return new GroupEntity(
             this.id,
             this.name,
-            this.rotations,
             this.status,
             this.services.add(service),
-            this.roster,
-            this.maxRejections,
-            this.lotterySeed,
-            this.lotteryOrder,
-            this.submittedEmails,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            this.inviteOpen,
             this.createdBy,
-            this.createdByEmail,
             this.createdDate
         )
     }
@@ -171,166 +146,209 @@ export class GroupEntity implements Group {
         return new GroupEntity(
             this.id,
             this.name,
-            this.rotations,
             this.status,
             this.services.remove(serviceId),
-            this.roster,
-            this.maxRejections,
-            this.lotterySeed,
-            this.lotteryOrder,
-            this.submittedEmails,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            this.inviteOpen,
             this.createdBy,
-            this.createdByEmail,
             this.createdDate
         )
     }
 
-    addRosterEntry(entry: RosterEntry): GroupEntity {
-        this.requireDraft('add a roster entry')
+    addRotationSlot(): GroupEntity {
+        this.requireDraft('add a rotation')
 
         return new GroupEntity(
             this.id,
             this.name,
-            this.rotations,
             this.status,
             this.services,
-            this.roster.add(entry),
-            this.maxRejections,
-            this.lotterySeed,
-            this.lotteryOrder,
-            this.submittedEmails,
+            this.members,
+            [...this.rotationSlots, emptyRotationSlot()],
+            this.rotationMode,
+            this.inviteOpen,
             this.createdBy,
-            this.createdByEmail,
             this.createdDate
         )
     }
 
-    removeRosterEntry(email: Email): GroupEntity {
-        this.requireDraft('remove a roster entry')
-        if (!this.roster.has(email)) {
-            throw new Error('Roster entry not found')
+    removeRotationSlot(index: number): GroupEntity {
+        this.requireDraft('remove a rotation')
+        if (index < 0 || index >= this.rotationSlots.length) {
+            throw new Error('Rotation not found')
         }
 
         return new GroupEntity(
             this.id,
             this.name,
-            this.rotations,
             this.status,
             this.services,
-            this.roster.remove(email),
-            this.maxRejections,
-            this.lotterySeed,
-            this.lotteryOrder,
-            this.submittedEmails,
+            this.members,
+            this.rotationSlots.filter((_, i) => i !== index),
+            this.rotationMode,
+            this.inviteOpen,
             this.createdBy,
-            this.createdByEmail,
             this.createdDate
         )
     }
 
-    // Freezes services, roster, maxRejections and the tie-break lottery.
-    // Everything the matching engine needs becomes immutable from this point
-    // on — see firestore.rules. Structural feasibility (service count, roster
-    // size) is checked here; the capacity/flow feasibility check (can
-    // everyone actually be seated) runs in OpenSubmissionsUseCase, since it
-    // needs the matching engine, not just counts.
-    //
-    // If the organizer never touched maxRejections, it resolves here to
-    // services.size - rotations - 1 (floored at 0) rather than staying at a
-    // bare 0 — a silent 0 default would make the whole rejection mechanism
-    // inert for every group whose organizer didn't think to raise it.
-    open(lotterySeed: string, lotteryOrder: string[]): GroupEntity {
-        this.requireDraft('open submissions')
+    updateRotationSlot(index: number, changes: Partial<RotationSlot>): GroupEntity {
+        this.requireDraft('update a rotation')
+        if (index < 0 || index >= this.rotationSlots.length) {
+            throw new Error('Rotation not found')
+        }
 
-        if (this.roster.size === 0) {
-            throw new Error('Add at least one intern to the roster before opening')
+        return new GroupEntity(
+            this.id,
+            this.name,
+            this.status,
+            this.services,
+            this.members,
+            this.rotationSlots.map((slot, i) => (i === index ? { ...slot, ...changes } : slot)),
+            this.rotationMode,
+            this.inviteOpen,
+            this.createdBy,
+            this.createdDate
+        )
+    }
+
+    // Switching mode never touches the other mode's data — flip back and
+    // forth without losing anything already entered.
+    setRotationMode(mode: RotationMode): GroupEntity {
+        this.requireDraft('change the rotation mode')
+
+        return new GroupEntity(
+            this.id,
+            this.name,
+            this.status,
+            this.services,
+            this.members,
+            this.rotationSlots,
+            mode,
+            this.inviteOpen,
+            this.createdBy,
+            this.createdDate
+        )
+    }
+
+    // Freezes services and rotation slots — everything the matching engine
+    // needs about the group's shape becomes immutable from this point on, so
+    // a vote cast against today's services/rotations keeps meaning the same
+    // thing forever. Membership is deliberately NOT frozen here: joining
+    // stays open (see inviteOpen) until the creator explicitly closes it.
+    open(): GroupEntity {
+        this.requireDraft('open the group')
+
+        if (this.rotationSlots.length === 0) {
+            throw new Error('Add at least one rotation before opening')
         }
         if (this.services.size < this.rotations) {
             throw new Error('There must be at least as many services as rotations')
         }
-        if (lotteryOrder.length !== this.roster.size) {
-            throw new Error('The lottery order must rank every roster entry exactly once')
-        }
-
-        const resolvedMaxRejections =
-            this.maxRejections ?? Math.max(0, this.services.size - this.rotations - 1)
 
         return new GroupEntity(
             this.id,
             this.name,
-            this.rotations,
             'open',
             this.services,
-            this.roster,
-            resolvedMaxRejections,
-            lotterySeed,
-            lotteryOrder,
-            this.submittedEmails,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            true,
             this.createdBy,
-            this.createdByEmail,
             this.createdDate
         )
     }
 
-    // Called once per intern as their grade sheet is written. Mirrors the
-    // firestore.rules update rule exactly: append-only, own email, no repeats.
-    recordSubmission(email: Email): GroupEntity {
+    // Self-service: any signed-in user can add themselves given the group's
+    // link, while the invite is open. Mirrors the firestore.rules delta
+    // check exactly — append-only, exactly your own entry.
+    join(entry: MemberEntry): GroupEntity {
         if (this.status !== 'open') {
-            throw new Error('Submissions are only accepted while the group is open')
+            throw new Error('This group is not open yet')
         }
-        if (!this.roster.has(email)) {
-            throw new Error(`${email.value} is not on this group's roster`)
+        if (!this.inviteOpen) {
+            throw new Error('This group is no longer accepting new members')
         }
-        if (this.submittedEmails.includes(email.value)) {
-            throw new Error(`${email.value} has already submitted`)
+        if (this.members.has(entry.userId)) {
+            throw new Error('Already a member of this group')
         }
 
         return new GroupEntity(
             this.id,
             this.name,
-            this.rotations,
             this.status,
             this.services,
-            this.roster,
-            this.maxRejections,
-            this.lotterySeed,
-            this.lotteryOrder,
-            [...this.submittedEmails, email.value],
+            this.members.add(entry),
+            this.rotationSlots,
+            this.rotationMode,
+            this.inviteOpen,
             this.createdBy,
-            this.createdByEmail,
             this.createdDate
         )
     }
 
-    hasSubmitted(email: Email): boolean {
-        return this.submittedEmails.includes(email.value)
-    }
-
-    allSubmitted(): boolean {
-        return this.submittedEmails.length === this.roster.size
-    }
-
-    // Grades become world-readable to the roster the moment this fires — see
-    // firestore.rules. Not a per-group option: fairness through transparency is
-    // a fixed rule of this app, not a setting an organizer can turn off.
-    markComputed(): GroupEntity {
-        if (this.status !== 'open') {
-            throw new Error('Only an open group can be marked as computed')
+    // Voluntary self-removal. Whether a member with an already-locked vote is
+    // allowed to call this is enforced by the use case (it needs the vote's
+    // lock state, which this entity doesn't know about), not here.
+    leave(userId: UserId): GroupEntity {
+        if (!this.members.has(userId)) {
+            throw new Error('Not a member of this group')
         }
 
         return new GroupEntity(
             this.id,
             this.name,
-            this.rotations,
-            'computed',
+            this.status,
             this.services,
-            this.roster,
-            this.maxRejections,
-            this.lotterySeed,
-            this.lotteryOrder,
-            this.submittedEmails,
+            this.members.remove(userId),
+            this.rotationSlots,
+            this.rotationMode,
+            this.inviteOpen,
             this.createdBy,
-            this.createdByEmail,
+            this.createdDate
+        )
+    }
+
+    // The creator's one narrow privilege: stop the roster from growing
+    // further, so "everyone who's in has voted" becomes a stable fact rather
+    // than a moving target. Reversible — see reopenInvite.
+    closeInvite(): GroupEntity {
+        if (this.status !== 'open') {
+            throw new Error('This group is not open yet')
+        }
+
+        return new GroupEntity(
+            this.id,
+            this.name,
+            this.status,
+            this.services,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            false,
+            this.createdBy,
+            this.createdDate
+        )
+    }
+
+    reopenInvite(): GroupEntity {
+        if (this.status !== 'open') {
+            throw new Error('This group is not open yet')
+        }
+
+        return new GroupEntity(
+            this.id,
+            this.name,
+            this.status,
+            this.services,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            true,
+            this.createdBy,
             this.createdDate
         )
     }
@@ -339,11 +357,15 @@ export class GroupEntity implements Group {
         return this.services.toArray()
     }
 
-    getRoster(): RosterEntry[] {
-        return this.roster.toArray()
+    getMembers(): MemberEntry[] {
+        return this.members.toArray()
     }
 
     isCreator(userId: UserId): boolean {
         return this.createdBy.equals(userId)
+    }
+
+    isMember(userId: UserId): boolean {
+        return this.members.has(userId)
     }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkStructuralFeasibility, computeAssignment, isAssignmentFeasible } from './assign'
+import { checkStructuralFeasibility, computeAssignment } from './assign'
 import { InfeasibleError, MatchingInput, ServiceCapacity } from './types'
 
 // Deterministic PRNG (mulberry32) so property tests are reproducible across
@@ -43,7 +43,7 @@ function bruteForceOptimal(input: MatchingInput): { worst: number; total: number
             const capacity = remainingCapacity.get(service.serviceId) as number
             if (capacity <= 0) continue
             const cost = grades.get(service.serviceId)
-            if (cost === undefined) continue // rejected
+            if (cost === undefined) continue
             remainingCapacity.set(service.serviceId, capacity - 1)
             backtrack(index + 1, [...costsSoFar, cost])
             remainingCapacity.set(service.serviceId, capacity)
@@ -70,7 +70,7 @@ describe('computeAssignment: determinism', () => {
         const lotteryOrder = ['alice', 'bob', 'carol', 'dana', 'eve']
         const students = lotteryOrder.map((studentId, i) => ({
             studentId,
-            costs: new Map(services.map((service, j) => [service.serviceId, (i + j) % 5]))
+            costs: new Map(services.map((service, j) => [service.serviceId, (i + j) % 4]))
         }))
         const input: MatchingInput = { rotations: 2, services, students, lotteryOrder }
 
@@ -82,7 +82,7 @@ describe('computeAssignment: determinism', () => {
 })
 
 describe('computeAssignment: invariants under random feasible instances', () => {
-    it('gives every student `rotations` distinct, non-rejected services within capacity', () => {
+    it('gives every student `rotations` distinct services within capacity', () => {
         // Ranges mirror an ad-hoc 3000-trial stress script run during
         // development (not committed) that caught two real bugs a smaller,
         // "generous capacity" sweep missed entirely: a Set-based dummy-padding
@@ -105,33 +105,21 @@ describe('computeAssignment: invariants under random feasible instances', () => 
             }))
 
             const lotteryOrder = Array.from({ length: studentCount }, (_, i) => `student${i}`)
-            const maxRejections = Math.max(0, serviceCount - rotations - 1)
-
-            const students = lotteryOrder.map(studentId => {
-                const rejectCount = Math.floor(rng() * (maxRejections + 1))
-                const rejected = new Set<number>()
-                while (rejected.size < rejectCount) {
-                    rejected.add(Math.floor(rng() * serviceCount))
-                }
-                const costs = new Map<string, number>()
-                services.forEach((service, i) => {
-                    if (rejected.has(i)) return
-                    costs.set(service.serviceId, Math.floor(rng() * 5))
-                })
-                return { studentId, costs }
-            })
+            const students = lotteryOrder.map(studentId => ({
+                studentId,
+                costs: new Map(services.map(service => [service.serviceId, Math.floor(rng() * 4)]))
+            }))
 
             const input: MatchingInput = { rotations, services, students, lotteryOrder }
 
-            // checkStructuralFeasibility ignores rejections (it's the cheap
-            // lock-time check against a fully-indifferent placeholder), which
-            // isn't accurate enough now that trials carry real rejections
-            // and capacities as low as 1 — isAssignmentFeasible checks the
-            // actual input.
-            if (!isAssignmentFeasible(input)) continue // tight capacities + rejections make this common; skip defensively
-
+            let result
+            try {
+                result = computeAssignment(input)
+            } catch (error) {
+                if (error instanceof InfeasibleError) continue // tight capacities make this common; skip defensively
+                throw error
+            }
             trialsRun++
-            const result = computeAssignment(input)
             const gradesByStudent = new Map(students.map(s => [s.studentId, s.costs]))
 
             for (const assignment of result.assignments) {
@@ -185,14 +173,18 @@ describe('computeAssignment: minimax optimality against a brute-force oracle', (
             const lotteryOrder = Array.from({ length: studentCount }, (_, i) => `student${i}`)
             const students = lotteryOrder.map(studentId => ({
                 studentId,
-                costs: new Map(services.map(service => [service.serviceId, Math.floor(rng() * 5)]))
+                costs: new Map(services.map(service => [service.serviceId, Math.floor(rng() * 4)]))
             }))
 
             const input: MatchingInput = { rotations: 1, services, students, lotteryOrder }
-            const { feasible } = checkStructuralFeasibility(services, 1, lotteryOrder)
-            if (!feasible) continue
 
-            const result = computeAssignment(input)
+            let result
+            try {
+                result = computeAssignment(input)
+            } catch (error) {
+                if (error instanceof InfeasibleError) continue
+                throw error
+            }
             const oracle = bruteForceOptimal(input)
 
             expect(result.worstCost).toBe(oracle.worst)
@@ -221,7 +213,7 @@ describe('computeAssignment: hand-verified golden case', () => {
         const lotteryOrder = ['Alice', 'Bob', 'Carol', 'Dana']
         const grades: Record<string, number[]> = {
             Alice: [0, 2, 3],
-            Bob: [0, 1, 4],
+            Bob: [0, 1, 3],
             Carol: [1, 0, 2],
             Dana: [2, 1, 0]
         }
@@ -246,50 +238,46 @@ describe('computeAssignment: hand-verified golden case', () => {
     })
 })
 
-describe('lock-time structural feasibility', () => {
-    it('flags a genuinely infeasible group that naive arithmetic would miss', () => {
-        // 4 students, 3 rotations. services.length === rotations, so every
-        // student must visit ALL THREE services — including S2, capacity 1
-        // per rotation. That's only 3 person-visits available across 3
-        // rotations, for 4 students who each need one. Both naive checks
-        // (services >= rotations: 3>=3; total capacity >= roster: 102>=4)
-        // pass; only the flow-based check catches the real shortfall.
+describe('checkStructuralFeasibility', () => {
+    it('flags fewer services than rotations', () => {
         const services: ServiceCapacity[] = [
-            { serviceId: 'S1', capacityPerRotation: 100 },
-            { serviceId: 'S2', capacityPerRotation: 1 },
-            { serviceId: 'S3', capacityPerRotation: 1 }
+            { serviceId: 'S1', capacityPerRotation: 10 },
+            { serviceId: 'S2', capacityPerRotation: 10 }
         ]
-        const rosterEmails = ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com']
 
-        const { feasible, reason } = checkStructuralFeasibility(services, 3, rosterEmails)
+        const { feasible, reason } = checkStructuralFeasibility(services, 3)
 
         expect(feasible).toBe(false)
         expect(reason).toBeTruthy()
     })
 
-    it('confirms the same services are feasible with one fewer mandatory rotation', () => {
-        // Same services and roster, but 2 rotations means services > rotations
-        // again, so students have a real choice and are not all forced
-        // through the capacity-1 services.
+    it('passes once there are at least as many services as rotations', () => {
         const services: ServiceCapacity[] = [
-            { serviceId: 'S1', capacityPerRotation: 100 },
-            { serviceId: 'S2', capacityPerRotation: 1 },
-            { serviceId: 'S3', capacityPerRotation: 1 }
+            { serviceId: 'S1', capacityPerRotation: 10 },
+            { serviceId: 'S2', capacityPerRotation: 10 },
+            { serviceId: 'S3', capacityPerRotation: 10 }
         ]
-        const rosterEmails = ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com']
 
-        const { feasible } = checkStructuralFeasibility(services, 2, rosterEmails)
+        const { feasible } = checkStructuralFeasibility(services, 3)
 
         expect(feasible).toBe(true)
     })
+})
 
-    it('computeAssignment throws InfeasibleError for the same infeasible instance', () => {
+describe('computeAssignment: capacity infeasibility', () => {
+    it('throws InfeasibleError for a genuinely infeasible instance that naive arithmetic would miss', () => {
+        // 4 students, 3 rotations. services.length === rotations, so every
+        // student must visit ALL THREE services — including S2, capacity 1
+        // per rotation. That's only 3 person-visits available across 3
+        // rotations, for 4 students who each need one. Both naive checks
+        // (services >= rotations: 3>=3; total capacity >= student count:
+        // 102>=4) pass; only the flow-based check catches the real shortfall.
         const services: ServiceCapacity[] = [
             { serviceId: 'S1', capacityPerRotation: 100 },
             { serviceId: 'S2', capacityPerRotation: 1 },
             { serviceId: 'S3', capacityPerRotation: 1 }
         ]
-        const lotteryOrder = ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com']
+        const lotteryOrder = ['student-a', 'student-b', 'student-c', 'student-d']
         const students = lotteryOrder.map(studentId => ({
             studentId,
             costs: new Map(services.map(service => [service.serviceId, 0]))
@@ -298,5 +286,25 @@ describe('lock-time structural feasibility', () => {
         expect(() => computeAssignment({ rotations: 3, services, students, lotteryOrder })).toThrow(
             InfeasibleError
         )
+    })
+
+    it('confirms the same services are feasible with one fewer mandatory rotation', () => {
+        // Same services and students, but 2 rotations means services > rotations
+        // again, so students have a real choice and are not all forced
+        // through the capacity-1 services.
+        const services: ServiceCapacity[] = [
+            { serviceId: 'S1', capacityPerRotation: 100 },
+            { serviceId: 'S2', capacityPerRotation: 1 },
+            { serviceId: 'S3', capacityPerRotation: 1 }
+        ]
+        const lotteryOrder = ['student-a', 'student-b', 'student-c', 'student-d']
+        const students = lotteryOrder.map(studentId => ({
+            studentId,
+            costs: new Map(services.map(service => [service.serviceId, 0]))
+        }))
+
+        expect(() =>
+            computeAssignment({ rotations: 2, services, students, lotteryOrder })
+        ).not.toThrow()
     })
 })

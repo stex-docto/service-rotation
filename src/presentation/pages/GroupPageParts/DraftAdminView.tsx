@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 import {
     Box,
     Button,
@@ -13,10 +13,12 @@ import {
     VStack
 } from '@chakra-ui/react'
 import { MdDelete } from 'react-icons/md'
-import { GroupEntity, ServiceId } from '@domain'
+import { GroupEntity, RotationMode, RotationSlot, ServiceEntity } from '@domain'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
+
+const AUTOSAVE_DELAY_MS = 600
 
 interface DraftAdminViewProps {
     group: GroupEntity
@@ -26,27 +28,38 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
     const {
         updateGroupSettingsUseCase,
         addServiceUseCase,
+        updateServiceUseCase,
         removeServiceUseCase,
-        addRosterEntryUseCase,
-        removeRosterEntryUseCase,
-        openSubmissionsUseCase
+        addRotationSlotUseCase,
+        removeRotationSlotUseCase,
+        updateRotationSlotUseCase,
+        setRotationModeUseCase,
+        openGroupUseCase
     } = useDependencies()
 
     const [error, setError] = useState<string | null>(null)
     const [busy, setBusy] = useState(false)
 
     const [name, setName] = useState(group.name)
-    const [rotations, setRotations] = useState(String(group.rotations))
-    const [maxRejections, setMaxRejections] = useState(
-        group.maxRejections === null ? '' : String(group.maxRejections)
-    )
+    const [nameSaveState, setNameSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+    const skipFirstNameSave = useRef(true)
 
     const [serviceName, setServiceName] = useState('')
     const [serviceDescription, setServiceDescription] = useState('')
     const [serviceCapacity, setServiceCapacity] = useState('1')
 
-    const [rosterEmail, setRosterEmail] = useState('')
-    const [rosterName, setRosterName] = useState('')
+    // Editable up to the moment the group opens — like the rotation slots
+    // below, each existing service autosaves on its own debounce, keyed by
+    // id (stable across removes) rather than array position.
+    const [services, setServices] = useState<ServiceEntity[]>(group.getServices())
+    const serviceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+    // Local buffer so typing doesn't fire a write per keystroke — each
+    // rotation slot autosaves on its own debounce, same idea as the name
+    // field below. Add/remove/mode-switch are immediate, single-click
+    // actions instead, mirroring how services are added/removed.
+    const [rotationSlots, setRotationSlots] = useState<RotationSlot[]>(group.rotationSlots)
+    const rotationSlotTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
 
     async function run(action: () => Promise<unknown>) {
         setBusy(true)
@@ -60,53 +73,149 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
         }
     }
 
-    async function saveSettings(event: FormEvent) {
-        event.preventDefault()
-        await run(() =>
-            updateGroupSettingsUseCase.execute({
-                groupId: group.id,
-                name: name.trim(),
-                rotations: Number(rotations),
-                maxRejections: maxRejections === '' ? undefined : Number(maxRejections)
-            })
-        )
-    }
+    // Debounced autosave for the group name — skips the initial mount, since
+    // it already matches what's stored.
+    useEffect(() => {
+        if (skipFirstNameSave.current) {
+            skipFirstNameSave.current = false
+            return
+        }
+        const trimmed = name.trim()
+        if (!trimmed) {
+            return
+        }
+        setNameSaveState('saving')
+        const timeout = setTimeout(() => {
+            updateGroupSettingsUseCase
+                .execute({ groupId: group.id, name: trimmed })
+                .then(() => setNameSaveState('saved'))
+                .catch(err => {
+                    setError(errorMessageFrom(err))
+                    setNameSaveState('idle')
+                })
+        }, AUTOSAVE_DELAY_MS)
+        return () => clearTimeout(timeout)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [name])
+
+    // Clears any pending autosave timers on unmount.
+    useEffect(() => {
+        const serviceTimersAtMount = serviceTimers.current
+        const rotationTimersAtMount = rotationSlotTimers.current
+        return () => {
+            Object.values(serviceTimersAtMount).forEach(clearTimeout)
+            Object.values(rotationTimersAtMount).forEach(clearTimeout)
+        }
+    }, [])
 
     async function addService(event: FormEvent) {
         event.preventDefault()
         await run(async () => {
-            await addServiceUseCase.execute({
+            const result = await addServiceUseCase.execute({
                 groupId: group.id,
                 name: serviceName.trim(),
                 description: serviceDescription.trim(),
                 capacity: Number(serviceCapacity)
             })
+            setServices(result.group.getServices())
             setServiceName('')
             setServiceDescription('')
             setServiceCapacity('1')
         })
     }
 
-    async function addRosterEntry(event: FormEvent) {
-        event.preventDefault()
+    async function removeService(serviceId: string) {
+        clearTimeout(serviceTimers.current[serviceId])
+        delete serviceTimers.current[serviceId]
+        setServices(previous => previous.filter(service => service.id.value !== serviceId))
         await run(async () => {
-            await addRosterEntryUseCase.execute({
+            const result = await removeServiceUseCase.execute({
                 groupId: group.id,
-                email: rosterEmail.trim(),
-                displayName: rosterName.trim()
+                serviceId: services.find(service => service.id.value === serviceId)!.id
             })
-            setRosterEmail('')
-            setRosterName('')
+            setServices(result.group.getServices())
         })
     }
 
-    async function openSubmissions() {
-        await run(() => openSubmissionsUseCase.execute({ groupId: group.id }))
+    function changeService(
+        serviceId: string,
+        changes: { name?: string; description?: string; capacity?: number }
+    ) {
+        // Ignore a transiently invalid capacity (e.g. clearing the field to
+        // retype it) rather than throwing out of a state updater.
+        if (changes.capacity !== undefined && !(changes.capacity >= 1)) {
+            return
+        }
+
+        setServices(previous => {
+            const updated = previous.map(service =>
+                service.id.value === serviceId
+                    ? service.update(changes.name, changes.description, changes.capacity)
+                    : service
+            )
+            const service = updated.find(s => s.id.value === serviceId) as ServiceEntity
+
+            clearTimeout(serviceTimers.current[serviceId])
+            serviceTimers.current[serviceId] = setTimeout(() => {
+                run(async () => {
+                    const result = await updateServiceUseCase.execute({
+                        groupId: group.id,
+                        serviceId: service.id,
+                        name: service.name,
+                        description: service.description,
+                        capacity: service.capacity
+                    })
+                    setServices(result.group.getServices())
+                })
+            }, AUTOSAVE_DELAY_MS)
+
+            return updated
+        })
     }
 
-    const services = group.getServices()
-    const roster = group.getRoster()
-    const suggestedMaxRejections = Math.max(0, services.length - group.rotations - 1)
+    async function addRotation() {
+        setRotationSlots(previous => [...previous, { name: null, startDate: null, endDate: null }])
+        await run(() => addRotationSlotUseCase.execute({ groupId: group.id }))
+    }
+
+    async function removeRotation(index: number) {
+        clearTimeout(rotationSlotTimers.current[index])
+        delete rotationSlotTimers.current[index]
+        setRotationSlots(previous => previous.filter((_, i) => i !== index))
+        await run(() => removeRotationSlotUseCase.execute({ groupId: group.id, index }))
+    }
+
+    function changeRotationSlot(index: number, changes: Partial<RotationSlot>) {
+        setRotationSlots(previous => {
+            const updated = previous.map((slot, i) =>
+                i === index ? { ...slot, ...changes } : slot
+            )
+            const slot = updated[index]
+
+            clearTimeout(rotationSlotTimers.current[index])
+            rotationSlotTimers.current[index] = setTimeout(() => {
+                run(() =>
+                    updateRotationSlotUseCase.execute({
+                        groupId: group.id,
+                        index,
+                        name: slot.name,
+                        startDate: slot.startDate,
+                        endDate: slot.endDate
+                    })
+                )
+            }, AUTOSAVE_DELAY_MS)
+
+            return updated
+        })
+    }
+
+    async function changeRotationMode(mode: RotationMode) {
+        await run(() => setRotationModeUseCase.execute({ groupId: group.id, mode }))
+    }
+
+    async function openGroup() {
+        await run(() => openGroupUseCase.execute({ groupId: group.id }))
+    }
 
     return (
         <VStack gap={8} align="stretch">
@@ -119,46 +228,116 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
 
             <ErrorMessage message={error} />
 
-            <Box as="form" onSubmit={saveSettings} borderWidth="1px" borderRadius="md" p={4}>
+            <Box borderWidth="1px" borderRadius="md" p={4}>
                 <Heading size="sm" mb={4}>
                     Paramètres
                 </Heading>
-                <VStack gap={4} align="stretch">
+                <VStack gap={2} align="stretch">
                     <Field.Root>
                         <Field.Label>Nom du groupe</Field.Label>
                         <Input value={name} onChange={event => setName(event.target.value)} />
                     </Field.Root>
-                    <Field.Root>
-                        <Field.Label>Nombre de rotations</Field.Label>
-                        <NumberInput.Root
-                            value={rotations}
-                            onValueChange={details => setRotations(details.value)}
-                            min={1}
-                        >
-                            <NumberInput.Input />
-                            <NumberInput.Control />
-                        </NumberInput.Root>
-                    </Field.Root>
-                    <Field.Root>
-                        <Field.Label>Nombre maximum de refus autorisés par interne</Field.Label>
-                        <NumberInput.Root
-                            value={maxRejections}
-                            onValueChange={details => setMaxRejections(details.value)}
-                            min={0}
-                        >
-                            <NumberInput.Input />
-                            <NumberInput.Control />
-                        </NumberInput.Root>
-                        <Field.HelperText>
-                            Suggestion pour {services.length} services et {group.rotations}{' '}
-                            rotations : {suggestedMaxRejections}. Laisser vide pour appliquer cette
-                            suggestion à l'ouverture.
-                        </Field.HelperText>
-                    </Field.Root>
-                    <Button type="submit" alignSelf="flex-start" loading={busy}>
-                        Enregistrer
-                    </Button>
+                    <Text fontSize="xs" colorPalette="gray">
+                        {nameSaveState === 'saving'
+                            ? 'Enregistrement…'
+                            : nameSaveState === 'saved'
+                              ? 'Enregistré.'
+                              : ' '}
+                    </Text>
                 </VStack>
+            </Box>
+
+            <Box borderWidth="1px" borderRadius="md" p={4}>
+                <HStack justify="space-between" mb={4}>
+                    <Heading size="sm">Rotations ({rotationSlots.length})</Heading>
+                    <HStack gap={1}>
+                        <Button
+                            size="xs"
+                            variant={group.rotationMode === 'name' ? 'solid' : 'outline'}
+                            onClick={() => changeRotationMode('name')}
+                        >
+                            Nommées
+                        </Button>
+                        <Button
+                            size="xs"
+                            variant={group.rotationMode === 'date' ? 'solid' : 'outline'}
+                            onClick={() => changeRotationMode('date')}
+                        >
+                            Datées
+                        </Button>
+                    </HStack>
+                </HStack>
+                <VStack gap={2} align="stretch" mb={4}>
+                    {rotationSlots.map((slot, index) => (
+                        <HStack
+                            key={index}
+                            gap={3}
+                            align="flex-end"
+                            borderWidth="1px"
+                            borderRadius="md"
+                            p={3}
+                            flexWrap="wrap"
+                        >
+                            <Text minW="70px" fontSize="sm" fontWeight="medium">
+                                #{index + 1}
+                            </Text>
+                            {group.rotationMode === 'name' ? (
+                                <Field.Root flex="1" minW="150px">
+                                    <Field.Label>Nom</Field.Label>
+                                    <Input
+                                        value={slot.name ?? ''}
+                                        placeholder={`Rotation ${index + 1}`}
+                                        onChange={event =>
+                                            changeRotationSlot(index, { name: event.target.value })
+                                        }
+                                    />
+                                </Field.Root>
+                            ) : (
+                                <>
+                                    <Field.Root flex="1" minW="150px">
+                                        <Field.Label>Début</Field.Label>
+                                        <Input
+                                            type="date"
+                                            value={slot.startDate ?? ''}
+                                            onChange={event =>
+                                                changeRotationSlot(index, {
+                                                    startDate: event.target.value || null
+                                                })
+                                            }
+                                        />
+                                    </Field.Root>
+                                    <Field.Root flex="1" minW="150px">
+                                        <Field.Label>Fin</Field.Label>
+                                        <Input
+                                            type="date"
+                                            value={slot.endDate ?? ''}
+                                            onChange={event =>
+                                                changeRotationSlot(index, {
+                                                    endDate: event.target.value || null
+                                                })
+                                            }
+                                        />
+                                    </Field.Root>
+                                </>
+                            )}
+                            <IconButton
+                                aria-label="Supprimer"
+                                size="sm"
+                                variant="ghost"
+                                colorPalette="red"
+                                onClick={() => removeRotation(index)}
+                            >
+                                <MdDelete />
+                            </IconButton>
+                        </HStack>
+                    ))}
+                    {rotationSlots.length === 0 && (
+                        <Text colorPalette="gray">Aucune rotation pour l'instant.</Text>
+                    )}
+                </VStack>
+                <Button variant="outline" onClick={addRotation} loading={busy}>
+                    Ajouter une rotation
+                </Button>
             </Box>
 
             <Box borderWidth="1px" borderRadius="md" p={4}>
@@ -169,31 +348,56 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
                     {services.map(service => (
                         <HStack
                             key={service.id.value}
-                            justify="space-between"
+                            gap={3}
+                            align="flex-end"
                             borderWidth="1px"
                             borderRadius="md"
                             p={3}
+                            flexWrap="wrap"
                         >
-                            <Box>
-                                <Text fontWeight="medium">{service.name}</Text>
-                                <Text fontSize="sm" colorPalette="gray">
-                                    {service.description || 'Aucune description'} —{' '}
-                                    {service.capacity} place(s) par rotation
-                                </Text>
-                            </Box>
+                            <Field.Root flex="2" minW="150px">
+                                <Field.Label>Nom</Field.Label>
+                                <Input
+                                    value={service.name}
+                                    onChange={event =>
+                                        changeService(service.id.value, {
+                                            name: event.target.value
+                                        })
+                                    }
+                                />
+                            </Field.Root>
+                            <Field.Root flex="2" minW="150px">
+                                <Field.Label>Description</Field.Label>
+                                <Input
+                                    value={service.description}
+                                    onChange={event =>
+                                        changeService(service.id.value, {
+                                            description: event.target.value
+                                        })
+                                    }
+                                />
+                            </Field.Root>
+                            <Field.Root flex="1" minW="100px">
+                                <Field.Label>Places / rotation</Field.Label>
+                                <NumberInput.Root
+                                    value={String(service.capacity)}
+                                    onValueChange={details =>
+                                        changeService(service.id.value, {
+                                            capacity: Number(details.value)
+                                        })
+                                    }
+                                    min={1}
+                                >
+                                    <NumberInput.Input />
+                                    <NumberInput.Control />
+                                </NumberInput.Root>
+                            </Field.Root>
                             <IconButton
                                 aria-label="Supprimer"
                                 size="sm"
                                 variant="ghost"
                                 colorPalette="red"
-                                onClick={() =>
-                                    run(() =>
-                                        removeServiceUseCase.execute({
-                                            groupId: group.id,
-                                            serviceId: service.id as ServiceId
-                                        })
-                                    )
-                                }
+                                onClick={() => removeService(service.id.value)}
                             >
                                 <MdDelete />
                             </IconButton>
@@ -239,96 +443,22 @@ export function DraftAdminView({ group }: DraftAdminViewProps) {
                 </HStack>
             </Box>
 
-            <Box borderWidth="1px" borderRadius="md" p={4}>
-                <Heading size="sm" mb={4}>
-                    Internes ({roster.length})
-                </Heading>
-                <VStack gap={2} align="stretch" mb={4}>
-                    {roster.map(entry => (
-                        <HStack
-                            key={entry.email.value}
-                            justify="space-between"
-                            borderWidth="1px"
-                            borderRadius="md"
-                            p={3}
-                        >
-                            <Box>
-                                <Text fontWeight="medium">{entry.displayName}</Text>
-                                <Text fontSize="sm" colorPalette="gray">
-                                    {entry.email.value}
-                                </Text>
-                            </Box>
-                            <IconButton
-                                aria-label="Retirer"
-                                size="sm"
-                                variant="ghost"
-                                colorPalette="red"
-                                onClick={() =>
-                                    run(() =>
-                                        removeRosterEntryUseCase.execute({
-                                            groupId: group.id,
-                                            email: entry.email.value
-                                        })
-                                    )
-                                }
-                            >
-                                <MdDelete />
-                            </IconButton>
-                        </HStack>
-                    ))}
-                    {roster.length === 0 && (
-                        <Text colorPalette="gray">Aucun interne ajouté pour l'instant.</Text>
-                    )}
-                </VStack>
-
-                <Separator mb={4} />
-
-                <HStack
-                    as="form"
-                    onSubmit={addRosterEntry}
-                    gap={3}
-                    align="flex-end"
-                    flexWrap="wrap"
-                >
-                    <Field.Root flex="2" minW="150px">
-                        <Field.Label>Nom</Field.Label>
-                        <Input
-                            value={rosterName}
-                            onChange={event => setRosterName(event.target.value)}
-                            required
-                        />
-                    </Field.Root>
-                    <Field.Root flex="2" minW="200px">
-                        <Field.Label>Email Google</Field.Label>
-                        <Input
-                            type="email"
-                            value={rosterEmail}
-                            onChange={event => setRosterEmail(event.target.value)}
-                            required
-                        />
-                    </Field.Root>
-                    <Button type="submit" loading={busy}>
-                        Ajouter
-                    </Button>
-                </HStack>
-            </Box>
-
             <Box borderWidth="1px" borderColor="blue.300" borderRadius="md" p={4}>
                 <Heading size="sm" mb={2}>
-                    Ouvrir les soumissions
+                    Ouvrir le groupe
                 </Heading>
                 <Text fontSize="sm" colorPalette="gray" mb={4}>
-                    Une fois ouvert, les services, la liste des internes et le tirage au sort de
-                    départage sont figés définitivement. Partagez ensuite le lien du groupe à tous
-                    les internes.
+                    Une fois ouvert, les services et les rotations sont figés définitivement.
+                    Partagez ensuite le lien du groupe : chaque interne rejoint et vote lui-même,
+                    sans inscription préalable.
                 </Text>
                 <Button
                     colorPalette="blue"
-                    onClick={openSubmissions}
+                    onClick={openGroup}
                     loading={busy}
-                    disabled={roster.length === 0 || services.length === 0}
+                    disabled={services.length === 0 || rotationSlots.length === 0}
                 >
-                    Ouvrir les soumissions
+                    Ouvrir le groupe
                 </Button>
             </Box>
         </VStack>

@@ -1,66 +1,101 @@
-import { FormEvent, useMemo, useState } from 'react'
-import { Box, Button, Heading, HStack, Text, VStack } from '@chakra-ui/react'
-import { GradeLevel, GroupEntity } from '@domain'
+import { useEffect, useRef, useState } from 'react'
+import { Box, Button, Dialog, Heading, HStack, Portal, Text, VStack } from '@chakra-ui/react'
+import { GradeLevel, GroupEntity, VoteEntity } from '@domain'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
 
 const GRADE_OPTIONS: { level: GradeLevel; label: string }[] = [
     { level: GradeLevel.Excellent, label: 'Excellent' },
-    { level: GradeLevel.TresBien, label: 'Très bien' },
     { level: GradeLevel.Bien, label: 'Bien' },
-    { level: GradeLevel.Passable, label: 'Passable' },
-    { level: GradeLevel.Insuffisant, label: 'Insuffisant' },
-    { level: GradeLevel.ARejeter, label: 'À rejeter' }
+    { level: GradeLevel.Indifferent, label: 'Indifférent' },
+    { level: GradeLevel.Passable, label: 'Passable' }
 ]
+
+const AUTOSAVE_DELAY_MS = 600
 
 interface GradeSheetFormProps {
     group: GroupEntity
-    onSubmitted: () => void
+    existingVote: VoteEntity | null
+    onChanged: () => void
 }
 
-export function GradeSheetForm({ group, onSubmitted }: GradeSheetFormProps) {
-    const { submitGradesUseCase } = useDependencies()
+// Freely re-editable (grades autosave, debounced, as you change them) until
+// you lock the vote — a separate, deliberate, irreversible action confirmed
+// through a dialog rather than a native alert. There is no cap on any grade
+// any more: every service is assignable, nothing is a veto.
+export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFormProps) {
+    const { saveVoteDraftUseCase, lockVoteUseCase } = useDependencies()
     const services = group.getServices()
 
-    const [grades, setGrades] = useState<Map<string, GradeLevel>>(
-        () => new Map(services.map(service => [service.id.value, GradeLevel.Bien]))
-    )
-    const [submitting, setSubmitting] = useState(false)
+    const [grades, setGrades] = useState<Map<string, GradeLevel>>(() => {
+        if (existingVote) {
+            return new Map(
+                services.map(service => [
+                    service.id.value,
+                    existingVote.gradeFor(service.id)?.level ?? GradeLevel.Bien
+                ])
+            )
+        }
+        return new Map(services.map(service => [service.id.value, GradeLevel.Bien]))
+    })
+    const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+    const [locking, setLocking] = useState(false)
+    const [confirmOpen, setConfirmOpen] = useState(false)
     const [error, setError] = useState<string | null>(null)
-
-    const rejectedCount = useMemo(
-        () => Array.from(grades.values()).filter(level => level === GradeLevel.ARejeter).length,
-        [grades]
-    )
-    const maxRejections = group.maxRejections ?? 0
+    const skipNextSave = useRef(true)
 
     function setGrade(serviceId: string, level: GradeLevel) {
         setGrades(previous => new Map(previous).set(serviceId, level))
     }
 
-    async function handleSubmit(event: FormEvent) {
-        event.preventDefault()
-        setSubmitting(true)
+    // Debounced autosave: skips the initial mount (grades already match
+    // existingVote then, nothing to save) and coalesces rapid changes into
+    // a single write instead of one per selection.
+    useEffect(() => {
+        if (skipNextSave.current) {
+            skipNextSave.current = false
+            return
+        }
+        setSaveState('saving')
+        const timeout = setTimeout(() => {
+            saveVoteDraftUseCase
+                .execute({ groupId: group.id, grades })
+                .then(() => {
+                    setSaveState('saved')
+                    onChanged()
+                })
+                .catch(err => {
+                    setError(errorMessageFrom(err))
+                    setSaveState('idle')
+                })
+        }, AUTOSAVE_DELAY_MS)
+        return () => clearTimeout(timeout)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [grades])
+
+    async function confirmLock() {
+        setConfirmOpen(false)
+        setLocking(true)
         setError(null)
         try {
-            await submitGradesUseCase.execute({ groupId: group.id, grades })
-            onSubmitted()
+            await lockVoteUseCase.execute({ groupId: group.id })
+            onChanged()
         } catch (err) {
             setError(errorMessageFrom(err))
-            setSubmitting(false)
+        } finally {
+            setLocking(false)
         }
     }
 
     return (
-        <VStack as="form" onSubmit={handleSubmit} gap={5} align="stretch">
+        <VStack gap={5} align="stretch">
             <Box>
                 <Heading size="md">Notez chaque service</Heading>
                 <Text fontSize="sm" colorPalette="gray" mt={1}>
                     Notez chaque service honnêtement : votre note n'influence que votre propre
-                    affectation, jamais celle des autres. Vous pouvez rejeter au maximum{' '}
-                    {maxRejections} service{maxRejections > 1 ? 's' : ''} ({rejectedCount}/
-                    {maxRejections} utilisé{rejectedCount > 1 ? 's' : ''}).
+                    affectation, jamais celle des autres. Votre brouillon est enregistré
+                    automatiquement ; verrouillez votre vote une fois prêt.
                 </Text>
             </Box>
 
@@ -101,14 +136,53 @@ export function GradeSheetForm({ group, onSubmitted }: GradeSheetFormProps) {
 
             <ErrorMessage message={error} />
 
-            <Button type="submit" colorPalette="blue" loading={submitting} alignSelf="flex-start">
-                Soumettre mes notes définitivement
-            </Button>
+            <HStack justify="space-between">
+                <Text fontSize="xs" colorPalette="gray">
+                    {saveState === 'saving'
+                        ? 'Enregistrement du brouillon…'
+                        : saveState === 'saved'
+                          ? 'Brouillon enregistré.'
+                          : ' '}
+                </Text>
+                <Button colorPalette="blue" loading={locking} onClick={() => setConfirmOpen(true)}>
+                    Verrouiller mon vote
+                </Button>
+            </HStack>
             <Text fontSize="xs" colorPalette="gray">
-                Une fois soumises, vos notes ne peuvent plus être modifiées. Elles deviendront
-                visibles de tous les membres du groupe une fois que tout le monde aura soumis les
-                siennes.
+                Une fois verrouillé, votre vote ne peut plus être modifié. Vous pourrez alors voir
+                le vote des autres membres ayant eux-mêmes verrouillé le leur — et eux le vôtre.
             </Text>
+
+            <Dialog.Root
+                open={confirmOpen}
+                onOpenChange={details => setConfirmOpen(details.open)}
+                role="alertdialog"
+            >
+                <Portal>
+                    <Dialog.Backdrop />
+                    <Dialog.Positioner>
+                        <Dialog.Content>
+                            <Dialog.Header>
+                                <Dialog.Title>Verrouiller votre vote ?</Dialog.Title>
+                            </Dialog.Header>
+                            <Dialog.Body>
+                                <Text>
+                                    Cette action est définitive : vous ne pourrez plus modifier vos
+                                    notes ensuite.
+                                </Text>
+                            </Dialog.Body>
+                            <Dialog.Footer>
+                                <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+                                    Annuler
+                                </Button>
+                                <Button colorPalette="blue" onClick={confirmLock}>
+                                    Verrouiller définitivement
+                                </Button>
+                            </Dialog.Footer>
+                        </Dialog.Content>
+                    </Dialog.Positioner>
+                </Portal>
+            </Dialog.Root>
         </VStack>
     )
 }

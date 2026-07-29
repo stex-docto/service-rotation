@@ -1,4 +1,11 @@
-import { Email, GroupEntity, GroupId, GroupRepository } from '@domain'
+import {
+    GroupEntity,
+    GroupId,
+    GroupNotFoundError,
+    GroupRepository,
+    MemberEntry,
+    UserId
+} from '@domain'
 import { Auth } from 'firebase/auth'
 import {
     collection,
@@ -9,6 +16,7 @@ import {
     getDocs,
     onSnapshot,
     query,
+    runTransaction,
     setDoc,
     where
 } from 'firebase/firestore'
@@ -57,9 +65,9 @@ export class FirebaseGroupDatastore implements GroupRepository {
         }
     }
 
-    async findByParticipantEmail(email: Email): Promise<GroupEntity[]> {
+    async findByMember(userId: UserId): Promise<GroupEntity[]> {
         try {
-            const q = query(this.collection, where('rosterEmails', 'array-contains', email.value))
+            const q = query(this.collection, where('memberUids', 'array-contains', userId.value))
             const snapshot = await getDocs(q)
             return snapshot.docs.map(docSnapshot =>
                 toGroupEntity(docSnapshot.data() as FirebaseGroupDocument)
@@ -67,6 +75,45 @@ export class FirebaseGroupDatastore implements GroupRepository {
         } catch (_err) {
             return []
         }
+    }
+
+    // A transaction, not save(): two members can join within milliseconds of
+    // each other, both racing to append to the same members array. Firestore
+    // re-runs this function against fresh data if the document changed
+    // between the read and the commit attempt, so the second joiner's write
+    // is always computed against the true latest state rather than silently
+    // clobbering the first.
+    async join(groupId: GroupId, entry: MemberEntry): Promise<GroupEntity> {
+        const groupRef = doc(this.collection, groupId.value)
+
+        return runTransaction(this.firestore, async transaction => {
+            const snapshot = await transaction.get(groupRef)
+            if (!snapshot.exists()) {
+                throw new GroupNotFoundError()
+            }
+            const currentGroup = toGroupEntity(snapshot.data() as FirebaseGroupDocument)
+            if (currentGroup.isMember(entry.userId)) {
+                return currentGroup
+            }
+            const updatedGroup = currentGroup.join(entry)
+            transaction.set(groupRef, toGroupDocument(updatedGroup))
+            return updatedGroup
+        })
+    }
+
+    async leave(groupId: GroupId, userId: UserId): Promise<GroupEntity> {
+        const groupRef = doc(this.collection, groupId.value)
+
+        return runTransaction(this.firestore, async transaction => {
+            const snapshot = await transaction.get(groupRef)
+            if (!snapshot.exists()) {
+                throw new GroupNotFoundError()
+            }
+            const currentGroup = toGroupEntity(snapshot.data() as FirebaseGroupDocument)
+            const updatedGroup = currentGroup.leave(userId)
+            transaction.set(groupRef, toGroupDocument(updatedGroup))
+            return updatedGroup
+        })
     }
 
     subscribe(id: GroupId, callback: (group: GroupEntity | null) => void): () => void {

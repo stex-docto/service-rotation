@@ -3,7 +3,6 @@ import { SignInUseCase } from '@application'
 
 export interface CreateGroupCommand {
     name: string
-    rotations: number
 }
 
 export interface CreateGroupResult {
@@ -19,7 +18,7 @@ export class CreateGroupUseCase {
     async execute(command: CreateGroupCommand): Promise<CreateGroupResult> {
         const user = await this.signInUseCase.requireCurrentUser()
 
-        const group = GroupEntity.create(command.name, command.rotations, user.id, user.email)
+        const group = GroupEntity.create(command.name, user.id)
 
         await this.groupRepository.save(group)
 

@@ -1,10 +1,11 @@
 import {
-    Email,
     GroupEntity,
     GroupId,
     GroupStatus,
-    RosterEntry,
-    RosterSet,
+    MemberEntry,
+    MemberSet,
+    RotationMode,
+    RotationSlot,
     ServiceEntity,
     ServiceId,
     ServiceSet,
@@ -18,32 +19,40 @@ export type FirebaseServiceDocument = {
     capacity: number
 }
 
-export type FirebaseRosterEntryDocument = {
-    email: string
+export type FirebaseMemberEntryDocument = {
+    userId: string
     displayName: string
+}
+
+// Legacy shape from before rotation slots existed — kept only so
+// toGroupEntity can migrate an old document on read. Never written any more.
+type LegacyRotationPeriod = {
+    startDate: string | null
+    endDate: string | null
 }
 
 export type FirebaseGroupDocument = {
     id: string
     name: string
-    rotations: number
     status: GroupStatus
     services: { [serviceId: string]: FirebaseServiceDocument }
-    roster: FirebaseRosterEntryDocument[]
-    rosterEmails: string[]
-    maxRejections: number | null
-    lotterySeed: string | null
-    lotteryOrder: string[] | null
-    submittedEmails: string[]
+    members: FirebaseMemberEntryDocument[]
+    memberUids: string[]
+    rotationSlots?: RotationSlot[]
+    rotationMode?: RotationMode
+    // Legacy fields from before rotation slots existed — see toGroupEntity's
+    // fallback. Never written by this version of the app.
+    rotations?: number
+    rotationPeriods?: LegacyRotationPeriod[]
+    inviteOpen: boolean
     createdBy: string
-    createdByEmail: string
     createdDate: string
 }
 
-// Shared by FirebaseGroupDatastore and FirebaseSubmissionDatastore (the
-// latter writes an updated group document as part of the same batch as a
-// submission — see SubmissionRepository.submit) so the two never drift into
-// producing subtly different documents for the same entity.
+// Shared by FirebaseGroupDatastore and FirebaseVoteDatastore (the latter
+// writes an updated group document as part of the same transaction as a
+// join/leave — see GroupRepository) so the two never drift into producing
+// subtly different documents for the same entity.
 export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
     const services: { [serviceId: string]: FirebaseServiceDocument } = {}
     for (const service of group.getServices()) {
@@ -55,32 +64,48 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
         }
     }
 
-    // Preserve roster ARRAY ORDER exactly (getRoster() iterates the
-    // underlying Map in insertion order, which for an entity freshly read
-    // via toGroupEntity matches Firestore's stored array order). The
-    // submission-recording security rule diffs the whole document against
-    // what's stored, so an incidental reordering here would make an
-    // unrelated field look "changed" and the write would be rejected.
-    const roster: FirebaseRosterEntryDocument[] = group
-        .getRoster()
-        .map(entry => ({ email: entry.email.value, displayName: entry.displayName }))
+    // Preserve member ARRAY ORDER exactly (getMembers() iterates the
+    // underlying Map in insertion order, which for an entity freshly read via
+    // toGroupEntity matches Firestore's stored array order). The join/leave
+    // security rule diffs the whole document against what's stored, so an
+    // incidental reordering here would make an unrelated field look
+    // "changed" and the write would be rejected.
+    const members: FirebaseMemberEntryDocument[] = group
+        .getMembers()
+        .map(entry => ({ userId: entry.userId.value, displayName: entry.displayName }))
 
     return {
         id: group.id.value,
         name: group.name,
-        rotations: group.rotations,
         status: group.status,
         services,
-        roster,
-        rosterEmails: roster.map(entry => entry.email),
-        maxRejections: group.maxRejections,
-        lotterySeed: group.lotterySeed,
-        lotteryOrder: group.lotteryOrder,
-        submittedEmails: group.submittedEmails,
+        members,
+        memberUids: members.map(entry => entry.userId),
+        rotationSlots: group.rotationSlots,
+        rotationMode: group.rotationMode,
+        inviteOpen: group.inviteOpen,
         createdBy: group.createdBy.value,
-        createdByEmail: group.createdByEmail.value,
         createdDate: group.createdDate.toISOString()
     }
+}
+
+// Falls back through progressively older shapes so a document from any
+// point in this app's (fast-moving) history still loads instead of
+// crashing: current rotationSlots, then the one-off rotations+rotationPeriods
+// shape, then a single empty slot for anything even older than that.
+function deriveRotationSlots(data: FirebaseGroupDocument): RotationSlot[] {
+    if (data.rotationSlots) {
+        return data.rotationSlots
+    }
+    if (data.rotations !== undefined) {
+        const periods = data.rotationPeriods ?? []
+        return Array.from({ length: data.rotations }, (_, i) => ({
+            name: null,
+            startDate: periods[i]?.startDate ?? null,
+            endDate: periods[i]?.endDate ?? null
+        }))
+    }
+    return [{ name: null, startDate: null, endDate: null }]
 }
 
 export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
@@ -96,23 +121,20 @@ export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
         )
     )
     // Direct array map — see the ordering note in toGroupDocument above.
-    const roster = new RosterSet(
-        data.roster.map(entry => new RosterEntry(Email.from(entry.email), entry.displayName))
+    const members = new MemberSet(
+        data.members.map(entry => new MemberEntry(UserId.from(entry.userId), entry.displayName))
     )
 
     return new GroupEntity(
         GroupId.from(data.id),
         data.name,
-        data.rotations,
         data.status,
         services,
-        roster,
-        data.maxRejections,
-        data.lotterySeed,
-        data.lotteryOrder,
-        data.submittedEmails,
+        members,
+        deriveRotationSlots(data),
+        data.rotationMode ?? 'name',
+        data.inviteOpen,
         UserId.from(data.createdBy),
-        Email.from(data.createdByEmail),
         new Date(data.createdDate)
     )
 }

@@ -10,7 +10,10 @@ A single-page web app that splits medical interns across hospital services over 
 rotations, using a one-sided min-cost-flow assignment (minimax fairness, then
 minimise total) rather than Gale-Shapley — see README's "Why this isn't
 Gale-Shapley". React 19 + TypeScript + Vite + Chakra UI v3 + Firebase
-(Firestore + Auth, Google sign-in only), deployed to GitHub Pages.
+(Firestore + Auth, Google sign-in — plus dev-only Anonymous sign-in for local
+multi-account testing), deployed to GitHub Pages. Identity throughout the app
+is Firebase uid only; no email is ever used for membership, votes, or the
+invite mechanism — see README's security model.
 
 ## Development commands
 
@@ -38,7 +41,7 @@ Hexagonal (ports & adapters):
   domain errors. No Firebase or React imports anywhere in this tree.
   - `src/domain/matching/` — the algorithm. Pure, framework-free, plain
     string/number types (not domain entities) so it stays trivially testable.
-    Translating `GroupEntity`/`SubmissionEntity` to and from its input/output
+    Translating `GroupEntity`/`VoteEntity` to and from its input/output
     types is `src/application/matchingInputs.ts`'s job, not this module's.
 - `src/application/` — one class per use case, `execute(command)` returning
   a wrapped `{ result }` object. Constructor-injects repository ports plus
@@ -52,9 +55,12 @@ Hexagonal (ports & adapters):
 - `src/presentation/` — React. DI via `DependencyContext` (interface) +
   `Dependencies` (the actual `createContext`) + `DependencyProvider` (the
   composition root) + `useDependencies()` hook. `GroupPage.tsx` branches on
-  `group.status` into `GroupPageParts/{DraftAdminView,OpenView,ComputedResultView}`
-  rather than using separate routes — the app is one shareable link per group,
-  and what you see depends on your role and the group's phase, not the URL.
+  `group.status` into `GroupPageParts/{DraftAdminView,OpenView}` — only two
+  states now, `draft` and `open`, there is no third "computed" status — rather
+  than using separate routes. `OpenView` itself handles join/vote/leave and
+  embeds `LiveResultView` for an on-demand, never-stored computation. The app
+  is one shareable link per group, and what you see depends on your role and
+  the group's phase, not the URL.
 
 ### Path aliases
 
@@ -83,13 +89,20 @@ stay 2-space with semicolons, outside Prettier's glob.
 ## Testing
 
 `src/domain/matching/*.test.ts` is the real test suite — determinism, every
-student gets `k` distinct non-rejected services, capacity never exceeded,
-a brute-force oracle confirming true minimax optimality on small random
-instances, one hand-verified golden case, and a genuinely infeasible instance
-that naive arithmetic checks would miss (see the comments in `assign.test.ts`
-for why that specific instance, not an arbitrary one, is used). Property
-tests use a seeded `mulberry32` PRNG, never `Math.random()`, so failures
-reproduce.
+student gets `k` distinct services, capacity never exceeded, a brute-force
+oracle confirming true minimax optimality on small random instances, one
+hand-verified golden case, and a genuinely infeasible instance that naive
+arithmetic checks would miss (see the comments in `assign.test.ts` for why
+that specific instance, not an arbitrary one, is used). Property tests use a
+seeded `mulberry32` PRNG, never `Math.random()`, so failures reproduce.
+
+Grades are a 4-level scale (`GradeLevel`: Excellent/Bien/Indifferent/
+Passable, costs 0..3) with no hard exclusion — every grade is assignable, so
+there is no rejection concept, no `maxRejections`, and no submit-time
+feasibility preflight any more. `checkStructuralFeasibility` only checks
+`services.length >= rotations`; real capacity infeasibility is discovered by
+`computeAssignment` itself, at compute time, over whichever votes are
+currently readable.
 
 If you touch `src/domain/matching/`, re-run the full suite plus consider a
 throwaway stress script (see git history / session notes) hammering hundreds

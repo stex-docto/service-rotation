@@ -1,29 +1,29 @@
 import {
-    Email,
     GroupEntity,
     GroupId,
     GroupNotFoundError,
     GroupRepository,
-    PermissionError
+    PermissionError,
+    RotationMode
 } from '@domain'
 import { SignInUseCase } from '@application'
 
-export interface RemoveRosterEntryCommand {
+export interface SetRotationModeCommand {
     groupId: GroupId
-    email: string
+    mode: RotationMode
 }
 
-export interface RemoveRosterEntryResult {
+export interface SetRotationModeResult {
     group: GroupEntity
 }
 
-export class RemoveRosterEntryUseCase {
+export class SetRotationModeUseCase {
     constructor(
         private readonly groupRepository: GroupRepository,
         private readonly signInUseCase: SignInUseCase
     ) {}
 
-    async execute(command: RemoveRosterEntryCommand): Promise<RemoveRosterEntryResult> {
+    async execute(command: SetRotationModeCommand): Promise<SetRotationModeResult> {
         const user = await this.signInUseCase.requireCurrentUser()
 
         const group = await this.groupRepository.findById(command.groupId)
@@ -31,10 +31,10 @@ export class RemoveRosterEntryUseCase {
             throw new GroupNotFoundError()
         }
         if (!group.isCreator(user.id)) {
-            throw new PermissionError('Only the group creator can edit the roster')
+            throw new PermissionError('Only the group creator can change the rotation mode')
         }
 
-        const updatedGroup = group.removeRosterEntry(Email.from(command.email))
+        const updatedGroup = group.setRotationMode(command.mode)
 
         await this.groupRepository.save(updatedGroup)
 

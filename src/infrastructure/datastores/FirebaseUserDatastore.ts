@@ -3,19 +3,20 @@ import {
     Auth,
     GoogleAuthProvider,
     onAuthStateChanged,
+    signInAnonymously as firebaseSignInAnonymously,
     signInWithPopup,
     signOut as firebaseSignOut,
     User
 } from 'firebase/auth'
 
 function toCurrentUser(user: User): CurrentUser {
-    if (!user.email) {
-        throw new Error('This Google account has no email address on file')
-    }
+    // Anonymous users (dev-only, see signInAnonymously below) have neither
+    // an email nor a display name — fall back to a short label from the uid.
+    const displayName = user.displayName || user.email || `Invité ${user.uid.slice(0, 6)}`
     return {
         id: UserId.from(user.uid),
-        email: Email.from(user.email),
-        displayName: user.displayName || user.email
+        email: user.email ? Email.from(user.email) : null,
+        displayName
     }
 }
 
@@ -43,6 +44,11 @@ export class FirebaseUserDatastore implements UserRepository {
 
     async signInWithGoogle(): Promise<CurrentUser> {
         const credential = await signInWithPopup(this.auth, new GoogleAuthProvider())
+        return toCurrentUser(credential.user)
+    }
+
+    async signInAnonymously(): Promise<CurrentUser> {
+        const credential = await firebaseSignInAnonymously(this.auth)
         return toCurrentUser(credential.user)
     }
 

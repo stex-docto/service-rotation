@@ -2,6 +2,7 @@ import { Box, Button, Flex, Heading, HStack, Text } from '@chakra-ui/react'
 import { Link as RouterLink } from 'react-router-dom'
 import { useCurrentUser } from '@presentation/hooks/useCurrentUser'
 import { useDependencies } from '@presentation/hooks/useDependencies'
+import { GuestSignInButton } from '@presentation/components/GuestSignInButton'
 
 export default function Header() {
     const { signInUseCase } = useDependencies()
@@ -34,6 +35,7 @@ export default function Header() {
                             Se connecter avec Google
                         </Button>
                     )}
+                    {!loading && !user && <GuestSignInButton size="sm" />}
                 </HStack>
             </Flex>
         </Box>
