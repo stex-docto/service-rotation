@@ -90,8 +90,9 @@ export class ComputeResultUseCase {
             const result = ResultEntity.create(
                 command.groupId,
                 assignments,
-                // The matching engine's cost scale (0..3) is exactly Grade's
-                // level scale by construction — see MAX_ACCEPTABLE_COST.
+                // The matching engine is scale-agnostic (see costBoundsFor in
+                // assign.ts) — this cast is safe only because this use case
+                // always feeds it costs straight from Grade's 0..3 scale.
                 computed.worstCost as GradeLevel,
                 computed.totalCost,
                 computed.theoreticalMinTotalCost,

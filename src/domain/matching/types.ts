@@ -4,13 +4,15 @@
 // plan at the root of this repo. Translating GroupEntity/VoteEntity to and
 // from these types is the job of the application layer.
 
-// Grade costs are 0 (best) .. 3 (worst) — every grade is assignable, there is
-// no hard exclusion. A missing entry in a student's costs map is still
-// treated as excluded by the graph builder below (no edge is added), which
-// the current application layer never relies on since every pair always has
-// a grade — kept only because it's simpler than asserting completeness here.
-export const MIN_ACCEPTABLE_COST = 0
-export const MAX_ACCEPTABLE_COST = 3
+// The engine derives its acceptable cost range from whatever the input
+// actually contains (see costBoundsFor in assign.ts) rather than assuming a
+// fixed scale — the application layer currently always populates costs from
+// Grade's 0 (best) .. 3 (worst) scale, but that's the caller's convention,
+// not a constraint enforced here. Every grade is assignable, there is no
+// hard exclusion. A missing entry in a student's costs map is still treated
+// as excluded by the graph builder (no edge is added), which the current
+// application layer never relies on since every pair always has a grade —
+// kept only because it's simpler than asserting completeness here.
 
 export interface ServiceCapacity {
     serviceId: string
@@ -20,7 +22,9 @@ export interface ServiceCapacity {
 
 export interface StudentGrades {
     studentId: string
-    // serviceId -> cost (0..3). Every service is expected to have an entry.
+    // serviceId -> cost. Every service is expected to have an entry. The
+    // application layer always uses Grade's 0..3 scale; the engine itself
+    // doesn't require it — see the module comment above.
     costs: Map<string, number>
 }
 
