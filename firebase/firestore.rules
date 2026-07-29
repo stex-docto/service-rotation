@@ -1,0 +1,184 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userEmail() {
+      return request.auth.token.email;
+    }
+
+    // ---------------------------------------------------------------------
+    // groups/{groupId}
+    //
+    // Lifecycle: draft -> open -> computed. Each state transition is its own
+    // clause below rather than one loose "creator can write" rule, because
+    // the whole "no modification possible" pitch of this app depends on
+    // exactly which fields can change and when — see the plan and
+    // GroupEntity for the reasoning behind each one.
+    // ---------------------------------------------------------------------
+    match /groups/{groupId} {
+      function isCreator(data) {
+        return isSignedIn() && request.auth.uid == data.createdBy;
+      }
+      function isOnRoster(data) {
+        return isSignedIn() && userEmail() in data.rosterEmails;
+      }
+      function isMember(data) {
+        return isCreator(data) || isOnRoster(data);
+      }
+
+      allow get: if isMember(resource.data);
+      // `list` is always called with a query filtered by createdBy or by
+      // rosterEmails (array-contains) — see GroupRepository — so the same
+      // membership check applies to every document the query can return.
+      allow list: if isSignedIn() && (
+        request.auth.uid == resource.data.createdBy ||
+        userEmail() in resource.data.rosterEmails
+      );
+
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'draft'
+        && request.resource.data.submittedEmails.size() == 0
+        && request.resource.data.lotterySeed == null
+        && request.resource.data.lotteryOrder == null;
+
+      allow update: if isSignedIn() && (
+        // (a) Creator edits a draft freely — services, roster, settings.
+        (
+          resource.data.status == 'draft'
+          && request.auth.uid == resource.data.createdBy
+          && request.resource.data.status == 'draft'
+          && request.resource.data.submittedEmails.size() == 0
+        )
+        ||
+        // (b) Creator opens submissions: freezes services/roster/rotations,
+        // commits the tie-break lottery, resolves maxRejections. This is the
+        // ONLY write that may set lotterySeed/lotteryOrder, and it can only
+        // happen once (draft -> open).
+        (
+          resource.data.status == 'draft'
+          && request.auth.uid == resource.data.createdBy
+          && request.resource.data.status == 'open'
+          && request.resource.data.services == resource.data.services
+          && request.resource.data.roster == resource.data.roster
+          && request.resource.data.rosterEmails == resource.data.rosterEmails
+          && request.resource.data.rotations == resource.data.rotations
+          && request.resource.data.lotterySeed is string
+          && request.resource.data.lotteryOrder is list
+          && request.resource.data.submittedEmails.size() == 0
+        )
+        ||
+        // (c) A roster member records their own submission. Append-only:
+        // exactly their own email, added once, nothing else on the group
+        // changes. There is deliberately no cross-check that a real
+        // submission document exists — see CLAUDE.md's security-model notes
+        // for why that residual gap is self-harming only, not exploitable
+        // against anyone else.
+        (
+          resource.data.status == 'open'
+          && isOnRoster(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['submittedEmails'])
+          && !(userEmail() in resource.data.submittedEmails)
+          && request.resource.data.submittedEmails == resource.data.submittedEmails.concat([userEmail()])
+        )
+        ||
+        // (d) Whoever's browser computes the result flips the status.
+        // Gated on the result already existing (defense in depth) — see
+        // ComputeResultUseCase, which treats this specific write as
+        // best-effort: reads elsewhere key off submittedEmails/result
+        // existence, never off this field, so a dropped write here is
+        // cosmetic, not a correctness bug.
+        (
+          resource.data.status == 'open'
+          && isMember(resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          && request.resource.data.status == 'computed'
+          && exists(/databases/$(database)/documents/groups/$(groupId)/result/final)
+        )
+      );
+
+      // Only a draft can be deleted — no participant data exists yet.
+      allow delete: if isSignedIn()
+        && resource.data.status == 'draft'
+        && request.auth.uid == resource.data.createdBy;
+
+      // ---------------------------------------------------------------------
+      // groups/{groupId}/submissions/{uid} — METADATA ONLY (email,
+      // submittedAt, rejectedServiceIds). Deliberately separate from the
+      // actual grades (see grades/data below): a rejection reveals a veto,
+      // never a preference among accepted services, so it's safe to keep
+      // this always listable. That's what lets SubmitGradesUseCase run an
+      // accurate feasibility preflight without exposing anyone's real
+      // preferences before the group is complete.
+      // ---------------------------------------------------------------------
+      match /submissions/{uid} {
+        function parentGroup() {
+          return get(/databases/$(database)/documents/groups/$(groupId)).data;
+        }
+        function isGroupMember() {
+          return isSignedIn() && (
+            userEmail() in parentGroup().rosterEmails || request.auth.uid == parentGroup().createdBy
+          );
+        }
+
+        allow get: if isGroupMember();
+        allow list: if isGroupMember();
+        allow create: if isSignedIn()
+          && request.auth.uid == uid
+          && parentGroup().status == 'open'
+          && userEmail() in parentGroup().rosterEmails
+          && request.resource.data.email == userEmail()
+          && request.resource.data.keys().hasOnly(['email', 'submittedAt', 'rejectedServiceIds']);
+        allow update, delete: if false;
+
+        // groups/{groupId}/submissions/{uid}/grades/data — the actual 0..4
+        // grades for accepted services. Gated on: it's your own submission,
+        // OR you're the organizer (needed to run an organizer-forced early
+        // compute — see CloseSubmissionsUseCase), OR the whole roster has
+        // submitted. That last condition, once true, stays true forever
+        // (submissions are create-only and the roster is frozen), so it
+        // doubles as the permanent post-compute transparency gate with no
+        // separate status-based rule needed.
+        match /grades/data {
+          function canReadGrades() {
+            return request.auth.uid == uid
+              || request.auth.uid == parentGroup().createdBy
+              || parentGroup().submittedEmails.size() == parentGroup().roster.size();
+          }
+
+          allow get: if isSignedIn() && canReadGrades();
+          allow create: if isSignedIn()
+            && request.auth.uid == uid
+            && parentGroup().status == 'open'
+            && userEmail() in parentGroup().rosterEmails;
+          allow update, delete: if false;
+        }
+      }
+
+      // ---------------------------------------------------------------------
+      // groups/{groupId}/result/final — create-once. Rules cannot verify the
+      // matching itself (see CLAUDE.md); the defence is that the computation
+      // is deterministic from frozen inputs and independently recomputable by
+      // any roster member, not that this document is provably correct.
+      // ---------------------------------------------------------------------
+      match /result/final {
+        function parentGroup() {
+          return get(/databases/$(database)/documents/groups/$(groupId)).data;
+        }
+
+        allow get: if isSignedIn() && (
+          userEmail() in parentGroup().rosterEmails || request.auth.uid == parentGroup().createdBy
+        );
+        allow create: if isSignedIn() && (
+          parentGroup().submittedEmails.size() == parentGroup().roster.size()
+          || request.auth.uid == parentGroup().createdBy
+        );
+        allow update, delete: if false;
+      }
+    }
+  }
+}
