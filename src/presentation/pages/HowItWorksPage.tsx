@@ -107,8 +107,16 @@ export default function HowItWorksPage() {
                     Le code est public
                 </Heading>
                 <Text>
-                    Rien ici n'est à prendre sur parole : l'algorithme, ses tests — y compris celui
-                    cité plus haut — et cette page elle-même sont dans le dépôt public.{' '}
+                    Rien ici n'est à prendre sur parole : l'algorithme, ses tests — y compris{' '}
+                    <Link
+                        href="https://github.com/stex-docto/service-rotation/blob/main/src/domain/matching/gamingResistance.test.ts"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        colorPalette="blue"
+                    >
+                        celui cité plus haut
+                    </Link>{' '}
+                    — et cette page elle-même sont dans le dépôt public.{' '}
                     <Link
                         href="https://github.com/stex-docto/service-rotation"
                         target="_blank"
