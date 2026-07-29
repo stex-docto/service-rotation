@@ -37,12 +37,13 @@ export interface MatchingInput {
     lotteryOrder: string[]
     // When false (the default), each student's rotationServiceIds are all
     // distinct — the classic "k different services" contract, enforced
-    // regardless of services.length. When true AND services.length <
-    // rotations, a student may be assigned the same service more than once —
-    // the only way to still fill every rotation — with no cap beyond
-    // `rotations` itself: min-cost flow decides the split purely on grades
-    // (see buildNetwork's perStudentServiceCap). Whenever
-    // services.length >= rotations this has no effect either way.
+    // regardless of services.length. When true, a student may be assigned
+    // the same service more than once whenever that's what min-cost flow
+    // picks, with no cap beyond `rotations` itself (see buildNetwork's
+    // perStudentServiceCap) — not just when services.length < rotations
+    // forces it: a student may prefer repeating one great service over a
+    // worse distinct one even when there are enough distinct services to
+    // avoid it.
     allowRepeatedServices: boolean
 }
 

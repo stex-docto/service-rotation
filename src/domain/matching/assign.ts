@@ -81,19 +81,21 @@ function buildNetwork(
     let callIndex = 0
 
     // Cap on how many rotations a single student can spend at the same
-    // service. 1 (never repeat) unless the caller opted in AND there are
-    // genuinely fewer services than rotations — in which case it's simply
-    // `rotations` (the same natural bound already used on the source->student
-    // edge), i.e. no artificial cap at all: once a repeat is structurally
-    // unavoidable, min-cost flow decides the split purely on grades. An
-    // evenly-spreading cap (e.g. ceil(rotations / m)) was considered and
-    // rejected — when m divides rotations it forces an exact split
+    // service: 1 (never repeat) when the flag is off, `rotations` (the same
+    // natural bound already used on the source->student edge, i.e. no
+    // artificial cap at all) when it's on — min-cost flow then decides the
+    // split purely on grades. Deliberately NOT gated on m < rotations: a
+    // student may prefer repeating one great service over being forced onto
+    // a worse distinct one even when there ARE enough distinct services to
+    // avoid it — gating this on structural necessity was tried and is a real
+    // bug (caught by bruteForceOptimalMultiRotation), since it silently
+    // re-forces distinctness, and therefore suboptimality, whenever
+    // services.length >= rotations regardless of what the caller asked for.
+    // An evenly-spreading cap (e.g. ceil(rotations / m)) was also considered
+    // and rejected — when m divides rotations it forces an exact split
     // regardless of grades, and with uneven service capacities it can reject
-    // a schedule that's genuinely feasible. Always exactly 1 whenever
-    // services.length >= rotations, so this never changes behaviour for the
-    // classic case.
-    const perStudentServiceCap =
-        input.allowRepeatedServices && m > 0 && m < input.rotations ? input.rotations : 1
+    // a schedule that's genuinely feasible.
+    const perStudentServiceCap = input.allowRepeatedServices ? input.rotations : 1
 
     input.lotteryOrder.forEach((studentId, i) => {
         graph.addEdge(source, studentNode(i), input.rotations, 0)

@@ -51,16 +51,19 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
 1. **Input**: each intern grades every service once — Excellent, Bien,
    Indifférent, or Passable. Every grade is assignable; there is no veto and
    no cap. One sheet drives every rotation; a student never repeats a service
-   — unless the organizer opts into `allowRepeatedServices` (off by default),
-   which only matters once there are fewer services than rotations: without
-   it, that group simply can't open (see `checkStructuralFeasibility`); with
-   it, a student may be assigned the same service more than once, with no cap
-   on the repeat beyond `rotations` itself — the min-cost objective decides
-   the split purely on grades.
+   — unless the organizer opts into `allowRepeatedServices` (off by default).
+   Off, a group with fewer services than rotations simply can't open (see
+   `checkStructuralFeasibility`). On, a student may be assigned the same
+   service more than once, with no cap on the repeat beyond `rotations`
+   itself, whenever that's what minimises their cost — not only when there
+   aren't enough distinct services to avoid it: a student may prefer
+   repeating one great service over a worse distinct one even when there are
+   enough services to give them a fully distinct set.
 2. **Phase 1 — min-cost flow** picks each student's set of `k` (=rotations)
-   services — distinct unless `allowRepeatedServices` is on and required —
-   minimising the worst grade anyone receives first (binary search over the 4
-   levels), then the total among solutions tied on that worst grade.
+   services — distinct unless `allowRepeatedServices` is on and a repeat is
+   actually cheaper — minimising the worst grade anyone receives first
+   (binary search over the 4 levels), then the total among solutions tied on
+   that worst grade.
 3. **Phase 2 — bipartite edge colouring** schedules that fixed service set
    into `k` rotations respecting per-rotation capacity. Always succeeds once
    phase 1 does — see `src/domain/matching/edgeColouring.ts`.

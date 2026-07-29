@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { checkStructuralFeasibility, computeAssignment } from './assign'
-import { bruteForceOptimal } from './bruteForceOracle'
+import { bruteForceOptimal, bruteForceOptimalMultiRotation } from './bruteForceOracle'
 import { InfeasibleError, MatchingInput, ServiceCapacity } from './types'
 
 // Deterministic PRNG (mulberry32) so property tests are reproducible across
@@ -170,6 +170,71 @@ describe('computeAssignment: minimax optimality against a brute-force oracle', (
         // Guards against every trial being skipped by the capacity check above,
         // which would make this test vacuously pass.
         expect(trialsRun).toBeGreaterThan(10)
+    })
+})
+
+describe('computeAssignment: multi-rotation minimax optimality against a brute-force oracle', () => {
+    it('achieves true minimax optimality with allowRepeatedServices, including actual repeats', () => {
+        // bruteForceOptimal above only covers rotations === 1; this uses
+        // bruteForceOptimalMultiRotation (per-rotation capacity, real
+        // scheduling) to independently confirm optimality holds across
+        // rotations too, specifically with allowRepeatedServices on — not
+        // just "some valid assignment" (already covered by the stress sweep
+        // above) but the true minimax-then-total optimum, same standard as
+        // every other scenario in this suite.
+        let trialsRun = 0
+        let repeatTrialsRun = 0
+
+        for (let trial = 0; trial < 60; trial++) {
+            const rng = mulberry32(7000 + trial)
+            const studentCount = 2 + Math.floor(rng() * 2) // 2..3
+            const serviceCount = 1 + Math.floor(rng() * 2) // 1..2 — often below rotations
+            const rotations = 2 + Math.floor(rng() * 2) // 2..3
+
+            const services: ServiceCapacity[] = Array.from({ length: serviceCount }, (_, i) => ({
+                serviceId: `svc${i}`,
+                capacityPerRotation: 1 + Math.floor(rng() * 2) // 1..2
+            }))
+            const totalCapacityPerRotation = services.reduce(
+                (sum, s) => sum + s.capacityPerRotation,
+                0
+            )
+            if (totalCapacityPerRotation < studentCount) continue // must seat everyone every round
+
+            const lotteryOrder = Array.from({ length: studentCount }, (_, i) => `student${i}`)
+            const students = lotteryOrder.map(studentId => ({
+                studentId,
+                costs: new Map(services.map(service => [service.serviceId, Math.floor(rng() * 4)]))
+            }))
+
+            const input: MatchingInput = {
+                rotations,
+                services,
+                students,
+                lotteryOrder,
+                allowRepeatedServices: true
+            }
+
+            let result
+            try {
+                result = computeAssignment(input)
+            } catch (error) {
+                if (error instanceof InfeasibleError) continue
+                throw error
+            }
+            const oracle = bruteForceOptimalMultiRotation(input)
+
+            expect(result.worstCost).toBe(oracle.worst)
+            expect(result.totalCost).toBe(oracle.total)
+            trialsRun++
+            if (serviceCount < rotations) repeatTrialsRun++
+        }
+
+        // Guards against every trial being skipped, or the actual-repeat
+        // branch never firing, either of which would let this test pass
+        // vacuously.
+        expect(trialsRun).toBeGreaterThan(10)
+        expect(repeatTrialsRun).toBeGreaterThan(5)
     })
 })
 
@@ -376,31 +441,50 @@ describe('computeAssignment: allowRepeatedServices', () => {
         ).toThrow(InfeasibleError)
     })
 
-    it('never repeats when there are already at least as many services as rotations', () => {
-        // allowRepeatedServices: true, but services.length >= rotations means
-        // the per-pair cap is still exactly 1 — same distinct-services
-        // behaviour as before, no regression for the classic case.
+    it('repeats even with enough distinct services, when a repeat is strictly cheaper', () => {
+        // Regression for a real bug the multi-rotation oracle caught: gating
+        // the per-pair cap on `m < rotations` silently re-forced
+        // distinctness (and therefore suboptimality) whenever
+        // services.length >= rotations, ignoring allowRepeatedServices
+        // entirely in that regime. Here m === rotations === 2, but svc0 is
+        // cheap for both students and has capacity 2 — both can park there
+        // every rotation for worst=1/total=2, strictly better than any
+        // distinct-services split (which forces at least one visit to the
+        // cost-3 svc1 for someone).
         const services: ServiceCapacity[] = [
-            { serviceId: 'S1', capacityPerRotation: 2 },
-            { serviceId: 'S2', capacityPerRotation: 2 },
-            { serviceId: 'S3', capacityPerRotation: 2 }
+            { serviceId: 'svc0', capacityPerRotation: 2 },
+            { serviceId: 'svc1', capacityPerRotation: 1 }
         ]
-        const lotteryOrder = ['alice', 'bob', 'carol']
-        const students = lotteryOrder.map((studentId, i) => ({
-            studentId,
-            costs: new Map(services.map((service, j) => [service.serviceId, (i + j) % 3]))
-        }))
+        const lotteryOrder = ['student0', 'student1']
+        const students = [
+            {
+                studentId: 'student0',
+                costs: new Map([
+                    ['svc0', 0],
+                    ['svc1', 3]
+                ])
+            },
+            {
+                studentId: 'student1',
+                costs: new Map([
+                    ['svc0', 1],
+                    ['svc1', 3]
+                ])
+            }
+        ]
 
         const result = computeAssignment({
-            rotations: 3,
+            rotations: 2,
             services,
             students,
             lotteryOrder,
             allowRepeatedServices: true
         })
 
+        expect(result.worstCost).toBe(1)
+        expect(result.totalCost).toBe(2)
         for (const assignment of result.assignments) {
-            expect(new Set(assignment.rotationServiceIds).size).toBe(3)
+            expect(assignment.rotationServiceIds).toEqual(['svc0', 'svc0'])
         }
     })
 
