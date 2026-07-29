@@ -66,14 +66,16 @@ service cloud.firestore {
              )
         )
         ||
-        // (b) Creator enables voting: freezes services/rotations. Pure
-        // status flip — membership and the invite lock carry over exactly
-        // as they were, whatever they were.
+        // (b) Creator enables voting: freezes services/rotations and locks
+        // the roster (inviteOpen -> false) in the same write — activating
+        // voting is the default moment the member list stops moving.
+        // Reversible afterward via clause (e), same as any other time.
         (
           resource.data.status == 'draft'
           && request.auth.uid == resource.data.createdBy
           && request.resource.data.status == 'open'
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          && request.resource.data.inviteOpen == false
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'inviteOpen'])
         )
         ||
         // (c) Self-join: exactly your own uid, added once, invite must be

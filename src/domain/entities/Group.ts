@@ -236,10 +236,11 @@ export class GroupEntity implements Group {
     // Freezes services and rotation slots — everything the matching engine
     // needs about the group's shape becomes immutable from this point on, so
     // a vote cast against today's services/rotations keeps meaning the same
-    // thing forever. Membership and its lock are untouched by this
-    // transition — joining/leaving/locking are independent of voting being
-    // enabled, and already possible during 'draft' (see join/leave/
-    // closeInvite below).
+    // thing forever. Also locks the roster (inviteOpen: false): activating
+    // voting is naturally the moment most organizers want the member list to
+    // stop moving, so that's the default rather than something they have to
+    // remember to do separately. Reversible — the creator can still reopen
+    // joining afterward via reopenInvite, same as any other time.
     open(): GroupEntity {
         this.requireDraft('open the group')
 
@@ -258,7 +259,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             this.rotationMode,
-            this.inviteOpen,
+            false,
             this.createdBy,
             this.createdDate
         )

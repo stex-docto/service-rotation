@@ -20,8 +20,9 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
   both at once) are still being configured. Two standing controls cover
   membership: lock/unlock the roster against new joins, and ban an
   individual member. Enabling voting (freezing services/rotations) is the
-  only other control — from then on there's no privileged access to anyone's
-  grades, including the organizer's own.
+  only other control, and locks the roster too by default — reopen it
+  afterward if latecomers still need to join. From then on there's no
+  privileged access to anyone's grades, including the organizer's own.
 - **Interns**: sign in with Google, open the link, join with a display name
   (no pre-registration, no need to wait for voting to be enabled), grade
   every service on a 4-level scale once voting is enabled, save the draft as
@@ -102,13 +103,14 @@ See `firebase/firestore.rules` (heavily commented) for the authoritative
 version. Summary:
 
 - **Lifecycle**: `groups/{groupId}` moves `draft → open`, where `open` means
-  *voting enabled* — services and rotations freeze at that point, forever.
-  Membership is independent of this: joining and leaving are self-service in
-  either phase, gated only by `inviteOpen` (the creator's roster lock,
-  toggleable in draft or open, any number of times) and, for leaving, the
-  member's own vote not being locked yet. The creator keeps two standing
-  privileges regardless of phase: toggling `inviteOpen`, and forcibly
-  removing (banning) any member.
+  *voting enabled* — services and rotations freeze at that point, forever,
+  and `inviteOpen` flips to `false` in the same write (see `Group.open`).
+  Outside of that one automatic flip, membership is independent of status:
+  joining and leaving are self-service in either phase, gated only by
+  `inviteOpen` (the creator's roster lock, toggleable in draft or open, any
+  number of times) and, for leaving, the member's own vote not being locked
+  yet. The creator keeps two standing privileges regardless of phase:
+  toggling `inviteOpen`, and forcibly removing (banning) any member.
 - **Identity is uid-only, never email.** Membership, votes, and the invite
   mechanism never reference anyone's email address. The group's own id
   (`crypto.randomUUID()`, unguessable, and groups are never listable by
