@@ -108,6 +108,27 @@ export function LiveResultView({ group, computeResult }: LiveResultViewProps) {
             <Separator />
 
             {/* Everything below is detail, not the main event. */}
+            {group.getServices().some(service => service.description) && (
+                <Box borderWidth="1px" borderRadius="md" p={4}>
+                    <Heading size="xs" mb={2} colorPalette="gray">
+                        Services
+                    </Heading>
+                    <VStack gap={1} align="stretch">
+                        {group
+                            .getServices()
+                            .filter(service => service.description)
+                            .map(service => (
+                                <Text key={service.id.value} fontSize="sm">
+                                    <Text as="span" fontWeight="medium">
+                                        {service.name}
+                                    </Text>{' '}
+                                    — {service.description}
+                                </Text>
+                            ))}
+                    </VStack>
+                </Box>
+            )}
+
             <Box borderWidth="1px" borderRadius="md" p={4}>
                 <Heading size="xs" mb={2} colorPalette="gray">
                     Statistiques
