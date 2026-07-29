@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Button, Dialog, Heading, HStack, Portal, Text, VStack } from '@chakra-ui/react'
+import { FaGrinStars, FaMeh, FaSmile, FaThumbsDown } from 'react-icons/fa'
 import { GradeLevel, GroupEntity, VoteEntity } from '@domain'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
 
-const GRADE_OPTIONS: { level: GradeLevel; label: string }[] = [
-    { level: GradeLevel.Excellent, label: 'Excellent' },
-    { level: GradeLevel.Bien, label: 'Bien' },
-    { level: GradeLevel.Indifferent, label: 'Indifférent' },
-    { level: GradeLevel.Passable, label: 'Passable' }
+const GRADE_OPTIONS = [
+    { level: GradeLevel.Excellent, label: 'Excellent', icon: FaGrinStars, colorPalette: 'green' },
+    { level: GradeLevel.Bien, label: 'Bien', icon: FaSmile, colorPalette: 'blue' },
+    { level: GradeLevel.Indifferent, label: 'Indifférent', icon: FaMeh, colorPalette: 'gray' },
+    { level: GradeLevel.Passable, label: 'Passable', icon: FaThumbsDown, colorPalette: 'red' }
 ]
 
 const AUTOSAVE_DELAY_MS = 600
@@ -108,6 +109,7 @@ export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFor
                         borderRadius="md"
                         p={3}
                         gap={4}
+                        flexWrap="wrap"
                     >
                         <Box>
                             <Text fontWeight="medium">{service.name}</Text>
@@ -117,19 +119,38 @@ export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFor
                                 </Text>
                             )}
                         </Box>
-                        <select
-                            value={grades.get(service.id.value)}
-                            onChange={event =>
-                                setGrade(service.id.value, Number(event.target.value) as GradeLevel)
-                            }
-                            style={{ borderWidth: 1, borderRadius: 6, padding: 8, flexShrink: 0 }}
-                        >
-                            {GRADE_OPTIONS.map(option => (
-                                <option key={option.level} value={option.level}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
+                        <HStack gap={1} flexShrink={0}>
+                            {GRADE_OPTIONS.map(option => {
+                                const Icon = option.icon
+                                const selected = grades.get(service.id.value) === option.level
+                                // The "gray" colorPalette's solid variant resolves to a
+                                // near-black background (Chakra's neutral-emphasis token) —
+                                // override it so the Indifférent choice reads as grey.
+                                const graySelectedOverride =
+                                    selected && option.colorPalette === 'gray'
+                                        ? {
+                                              bg: 'gray.400',
+                                              borderColor: 'gray.400',
+                                              color: 'white'
+                                          }
+                                        : {}
+                                return (
+                                    <Button
+                                        key={option.level}
+                                        size="sm"
+                                        variant={selected ? 'solid' : 'outline'}
+                                        colorPalette={selected ? option.colorPalette : 'gray'}
+                                        {...graySelectedOverride}
+                                        title={option.label}
+                                        aria-label={option.label}
+                                        aria-pressed={selected}
+                                        onClick={() => setGrade(service.id.value, option.level)}
+                                    >
+                                        <Icon />
+                                    </Button>
+                                )
+                            })}
+                        </HStack>
                     </HStack>
                 ))}
             </VStack>
