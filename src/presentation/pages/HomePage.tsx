@@ -127,13 +127,6 @@ export default function HomePage() {
 
     return (
         <VStack gap={8} align="stretch">
-            <HStack justify="space-between">
-                <Heading size="lg">Mes groupes</Heading>
-                <RouterLink to="/create">
-                    <Button colorPalette="blue">Créer un groupe</Button>
-                </RouterLink>
-            </HStack>
-
             <ErrorMessage message={error} />
 
             {loading ? (
@@ -142,13 +135,15 @@ export default function HomePage() {
                 <>
                     <Box>
                         <Heading size="sm" mb={3}>
-                            Créés par moi
+                            Mes participations
                         </Heading>
-                        {created.length === 0 ? (
-                            <Text colorPalette="gray">Aucun groupe créé pour l'instant.</Text>
+                        {participating.length === 0 ? (
+                            <Text colorPalette="gray">
+                                Vous ne participez à aucun groupe pour l'instant.
+                            </Text>
                         ) : (
                             <VStack gap={2} align="stretch">
-                                {created.map(group => (
+                                {participating.map(group => (
                                     <GroupRow
                                         key={group.id.value}
                                         group={group}
@@ -162,16 +157,19 @@ export default function HomePage() {
                     </Box>
 
                     <Box>
-                        <Heading size="sm" mb={3}>
-                            J'y participe
-                        </Heading>
-                        {participating.length === 0 ? (
-                            <Text colorPalette="gray">
-                                Vous ne participez à aucun groupe pour l'instant.
-                            </Text>
+                        <HStack justify="space-between" mb={3}>
+                            <Heading size="sm">Mes groupes</Heading>
+                            <RouterLink to="/create">
+                                <Button colorPalette="blue" size="sm">
+                                    Créer un groupe
+                                </Button>
+                            </RouterLink>
+                        </HStack>
+                        {created.length === 0 ? (
+                            <Text colorPalette="gray">Aucun groupe créé pour l'instant.</Text>
                         ) : (
                             <VStack gap={2} align="stretch">
-                                {participating.map(group => (
+                                {created.map(group => (
                                     <GroupRow
                                         key={group.id.value}
                                         group={group}
