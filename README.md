@@ -1,6 +1,6 @@
 # Affectation des Stages (service-rotation)
 
-A Progressive Web App for splitting a cohort of medical interns across hospital
+A single-page web app for splitting a cohort of medical interns across hospital
 services, rotation after rotation, using an outcome that minimises real
 dissatisfaction while remaining hard to game. Deployed on GitHub Pages with a
 Firebase (Firestore + Auth) backend — no server, no Cloud Functions.
@@ -117,34 +117,43 @@ version. Summary:
 Docker-based, per `docs/ADR-001-Docker-Package-Management.md`:
 
 ```
-make dev              # http://127.0.0.1:3000, against real Firebase
+make dev              # http://localhost:3000, against the dev Firebase project
 make test             # vitest
 make lint             # format + lint + type-check
-make firebase.emulators   # local Auth + Firestore emulators
 ```
 
-Set `VITE_USE_FIREBASE_EMULATOR=true` in `.env` to point the app at the
-emulators instead of production Firebase. See the networking note in
-`docker-compose.yml` if you're not on Linux (`network_mode: host` doesn't
-apply on Mac/Windows Docker Desktop).
+## Two Firebase projects, no emulators
+
+Dev and prod are separate real Firebase projects (aliased in
+`firebase/.firebaserc` as `dev`/`prod`), not a local emulator — `.env`
+(gitignored, from `.env.example`) holds the **dev** project's config and is
+what `make dev` and the frontend container use; the **prod** project's
+config only ever lives in the `ENV_FILE` GitHub Actions secret, used by
+`.github/workflows/deploy.yml` at build time.
 
 ## Setup checklist (do this yourself — not automated)
+
+Repeat steps 1–2 for both the dev and prod Firebase projects.
 
 1. Create a Firebase project. Enable **Google** sign-in only under
    Authentication.
 2. Create a Firestore database (production mode).
-3. `firebase deploy --only firestore:rules,firestore:indexes` from
-   `firebase/` (or `make firebase.deploy`), after setting the real project ID
-   in `firebase/.firebaserc`.
+3. Set the dev and prod project IDs in `firebase/.firebaserc`, then deploy
+   rules/indexes to each: `make firebase.deploy.dev` and
+   `make firebase.deploy.prod` (or `firebase deploy --only
+   firestore:rules,firestore:indexes -P <dev|prod>` from `firebase/`).
 4. Copy `.env.example` to `.env` and fill in the six `VITE_FIREBASE_*` values
-   from the Firebase console.
+   from the **dev** project's console.
 5. Enable GitHub Pages via Actions (Settings → Pages → Source: GitHub
    Actions).
-6. Add a repo secret `ENV_FILE` containing the same six variables (used by
-   `.github/workflows/deploy.yml`).
-7. Add your GitHub Pages domain to Firebase Auth's authorised domains list.
-8. If the repo is ever renamed again, update `base` and
-   `workbox.navigateFallback` in `vite.config.ts` to match.
+6. Add a repo secret `ENV_FILE` containing the same six variables, but from
+   the **prod** project's console (used by `.github/workflows/deploy.yml`).
+7. Add `localhost` to the dev project's authorised domains (Firebase ships
+   this by default, but confirm it's there — `127.0.0.1` is not on the list
+   and `signInWithPopup` will misbehave against it), and your GitHub Pages
+   domain to the prod project's.
+8. If the repo is ever renamed again, update `base` in `vite.config.ts` to
+   match.
 
 ## License
 

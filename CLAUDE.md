@@ -6,7 +6,7 @@ conventions, not the app's behavior.
 
 ## Project overview
 
-A PWA that splits medical interns across hospital services over several
+A single-page web app that splits medical interns across hospital services over several
 rotations, using a one-sided min-cost-flow assignment (minimax fairness, then
 minimise total) rather than Gale-Shapley — see README's "Why this isn't
 Gale-Shapley". React 19 + TypeScript + Vite + Chakra UI v3 + Firebase
@@ -14,13 +14,21 @@ Gale-Shapley". React 19 + TypeScript + Vite + Chakra UI v3 + Firebase
 
 ## Development commands
 
-- `make dev` — Docker dev server, http://127.0.0.1:3000
+- `make dev` — Docker dev server, http://localhost:3000, against the dev
+  Firebase project (no emulators — see below)
 - `make test` — vitest (the matching engine's test suite is the one that
   actually matters; everything else is thin)
 - `make lint` — format + lint + type-check, run before every commit
-- `make firebase.emulators` — local Auth + Firestore emulators
+- `make firebase.deploy.dev` / `make firebase.deploy.prod` — push
+  firestore rules/indexes to the dev or prod Firebase project (aliases in
+  `firebase/.firebaserc`)
 - `docker-compose run --rm frontend yarn add <package>` — all package
   management goes through Docker, per `docs/ADR-001-Docker-Package-Management.md`
+
+Dev and prod are two separate real Firebase projects, not a local emulator —
+`.env` (gitignored) holds the dev project's config; the prod project's config
+only lives in the `ENV_FILE` GitHub Actions secret. See README's "Two
+Firebase projects, no emulators".
 
 ## Architecture
 

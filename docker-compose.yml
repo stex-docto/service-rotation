@@ -1,12 +1,8 @@
 services:
   frontend:
     image: node:22-alpine
-    # host networking (Linux only) so this container can reach the
-    # firebase-tools emulators at plain localhost:8080/9099 — see
-    # VITE_USE_FIREBASE_EMULATOR below. On Mac/Windows, drop network_mode,
-    # restore the port mapping, and point the emulator hosts at
-    # host.docker.internal instead.
-    network_mode: host
+    ports:
+      - '3000:3000'
     environment:
       - VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY}
       - VITE_FIREBASE_AUTH_DOMAIN=${VITE_FIREBASE_AUTH_DOMAIN}
@@ -14,7 +10,6 @@ services:
       - VITE_FIREBASE_STORAGE_BUCKET=${VITE_FIREBASE_STORAGE_BUCKET}
       - VITE_FIREBASE_MESSAGING_SENDER_ID=${VITE_FIREBASE_MESSAGING_SENDER_ID}
       - VITE_FIREBASE_APP_ID=${VITE_FIREBASE_APP_ID}
-      - VITE_USE_FIREBASE_EMULATOR=${VITE_USE_FIREBASE_EMULATOR:-false}
     volumes:
       - .:/app
     command: sh -c "yarn && yarn dev"
@@ -23,7 +18,6 @@ services:
   firebase-tools:
     build:
       context: firebase-tools
-    network_mode: host
     volumes:
       - ./firebase/:/firebase
       - firebase-tools-config:/root/.config

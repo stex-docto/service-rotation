@@ -7,7 +7,6 @@ import Footer from '@presentation/components/Footer'
 import HomePage from '@presentation/pages/HomePage'
 import CreateGroupPage from '@presentation/pages/CreateGroupPage'
 import GroupPage from '@presentation/pages/GroupPage'
-import './sw-update'
 
 function App() {
     return (

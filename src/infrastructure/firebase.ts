@@ -1,8 +1,7 @@
 import { FirebaseApp, getApps, initializeApp } from 'firebase/app'
-import { Auth, connectAuthEmulator, getAuth } from 'firebase/auth'
+import { Auth, getAuth } from 'firebase/auth'
 import {
     Firestore,
-    connectFirestoreEmulator,
     getFirestore,
     initializeFirestore,
     persistentLocalCache,
@@ -41,11 +40,6 @@ export class Firebase {
             this.firestore = initializeFirestore(this.app, {
                 localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
             })
-
-            if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
-                connectAuthEmulator(this.auth, 'http://localhost:9099', { disableWarnings: true })
-                connectFirestoreEmulator(this.firestore, 'localhost', 8080)
-            }
         }
     }
 
