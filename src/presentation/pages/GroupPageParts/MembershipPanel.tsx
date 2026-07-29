@@ -98,7 +98,7 @@ export function MembershipPanel({
     }
 
     return (
-        <VStack gap={4} align="stretch" borderWidth="1px" borderRadius="md" p={4}>
+        <VStack gap={4} align="stretch" borderWidth="1px" borderRadius="md" shadow="sm" p={4}>
             <Heading size="sm">Membres ({members.length})</Heading>
 
             <ErrorMessage message={error} />
@@ -134,28 +134,28 @@ export function MembershipPanel({
                             </>
                         )}
                     </Box>
-
-                    {members.length > 0 && (
-                        <VStack align="stretch" gap={1}>
-                            {members.map(member => (
-                                <HStack key={member.userId.value} justify="space-between">
-                                    <Text fontSize="sm">{member.displayName}</Text>
-                                    {!member.userId.equals(currentUser.id) && (
-                                        <Button
-                                            size="xs"
-                                            variant="ghost"
-                                            colorPalette="red"
-                                            loading={banningUserId === member.userId.value}
-                                            onClick={() => ban(member.userId)}
-                                        >
-                                            Bannir
-                                        </Button>
-                                    )}
-                                </HStack>
-                            ))}
-                        </VStack>
-                    )}
                 </>
+            )}
+
+            {members.length > 0 && (
+                <VStack align="stretch" gap={1}>
+                    {members.map(member => (
+                        <HStack key={member.userId.value} justify="space-between">
+                            <Text fontSize="sm">{member.displayName}</Text>
+                            {isCreator && !member.userId.equals(currentUser.id) && (
+                                <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    colorPalette="red"
+                                    loading={banningUserId === member.userId.value}
+                                    onClick={() => ban(member.userId)}
+                                >
+                                    Bannir
+                                </Button>
+                            )}
+                        </HStack>
+                    ))}
+                </VStack>
             )}
 
             {!isMember &&
