@@ -2,8 +2,6 @@ import { scheduleRotations } from './edgeColouring'
 import { FlowNetwork } from './minCostFlow'
 import {
     InfeasibleError,
-    MAX_ACCEPTABLE_COST,
-    MIN_ACCEPTABLE_COST,
     MatchingInput,
     MatchingResult,
     ServiceCapacity,
@@ -22,6 +20,31 @@ import {
 // exactly as auditable as the grades themselves.
 function tieBreakScaleFor(input: MatchingInput): number {
     return input.lotteryOrder.length * input.rotations + 1
+}
+
+// The engine imposes no fixed cost scale of its own — it derives the
+// acceptable range from whatever integer costs this specific input actually
+// contains, rather than assuming a hardcoded 0..3. That range only needs to
+// be correct for THIS input: feasibleAt/the binary search below only ever
+// compare against values inside it. (The current application layer always
+// populates costs from Grade's 0..3 scale — see ComputeResultUseCase's
+// worstCost -> GradeLevel cast — but that's a convention of the caller, not
+// a constraint enforced here.) Costs are still assumed to be integers: the
+// binary search's `mid + 1` step relies on adjacent thresholds differing by
+// exactly 1, same as before this was made dynamic.
+function costBoundsFor(input: MatchingInput): { min: number; max: number } {
+    let min = Infinity
+    let max = -Infinity
+    for (const student of input.students) {
+        for (const cost of student.costs.values()) {
+            if (cost < min) min = cost
+            if (cost > max) max = cost
+        }
+    }
+    // No costs anywhere (e.g. no students, or nobody has a single grade) —
+    // feasibleAt will correctly report infeasible regardless of this choice.
+    if (min === Infinity) return { min: 0, max: 0 }
+    return { min, max }
 }
 
 interface EdgeMeta {
@@ -98,7 +121,10 @@ function extractAssignment(
 
     const assignment = new Map<string, string[]>()
     let totalCost = 0
-    let worstCost = MIN_ACCEPTABLE_COST
+    // -Infinity, not a hardcoded floor: targetFlow > 0 guarantees at least
+    // one edge below is actually assigned, so the real Math.max always wins
+    // on the first iteration regardless of the cost scale's sign.
+    let worstCost = -Infinity
 
     for (const edge of network.edges) {
         if (network.graph.flowOnEdgeAt(edge.callIndex) !== 1) continue
@@ -123,6 +149,7 @@ export function computeAssignment(input: MatchingInput): MatchingResult {
         a.serviceId.localeCompare(b.serviceId)
     )
     const tieBreakScale = tieBreakScaleFor(input)
+    const { min: minCost, max: maxCost } = costBoundsFor(input)
 
     const feasibleAt = (costLimit: number): boolean => {
         const network = buildNetwork(input, orderedServices, rankOf, costLimit, tieBreakScale)
@@ -130,17 +157,17 @@ export function computeAssignment(input: MatchingInput): MatchingResult {
         return flow === targetFlow
     }
 
-    if (!feasibleAt(MAX_ACCEPTABLE_COST)) {
+    if (!feasibleAt(maxCost)) {
         throw new InfeasibleError(
             'No assignment exists that gives every student their required number of distinct services. ' +
                 'Increase capacity or add services.'
         )
     }
 
-    // Binary search the minimal achievable worst-case grade. At most 2 probes
-    // over the 4 acceptable levels (0..3).
-    let low = MIN_ACCEPTABLE_COST
-    let high = MAX_ACCEPTABLE_COST
+    // Binary search the minimal achievable worst-case grade, between the
+    // cheapest and priciest cost actually present in this input.
+    let low = minCost
+    let high = maxCost
     while (low < high) {
         const mid = Math.floor((low + high) / 2)
         if (feasibleAt(mid)) {
@@ -164,7 +191,7 @@ export function computeAssignment(input: MatchingInput): MatchingResult {
         input,
         orderedServices,
         rankOf,
-        MAX_ACCEPTABLE_COST,
+        maxCost,
         tieBreakScale
     )
     const unconstrained = extractAssignment(unconstrainedNetwork, targetFlow)

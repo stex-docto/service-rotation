@@ -1,5 +1,5 @@
 export { computeAssignment, checkStructuralFeasibility } from './assign'
-export { InfeasibleError, MIN_ACCEPTABLE_COST, MAX_ACCEPTABLE_COST } from './types'
+export { InfeasibleError } from './types'
 export type {
     ServiceCapacity,
     StudentGrades,
