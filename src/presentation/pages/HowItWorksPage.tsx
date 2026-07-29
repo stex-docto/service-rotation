@@ -4,7 +4,7 @@ export default function HowItWorksPage() {
     return (
         <VStack gap={8} align="stretch" py={4}>
             <Heading size="lg">
-                Comment ça marche, et pourquoi voter honnêtement est votre meilleure stratégie
+                Comment ça marche, et pourquoi vous pouvez voter en toute confiance
             </Heading>
 
             <Box>
@@ -13,9 +13,9 @@ export default function HowItWorksPage() {
                 </Heading>
                 <Text>
                     Répartir les internes entre les services de stage, rotation après rotation, de
-                    la façon la plus juste possible : d'abord minimiser la pire note que quelqu'un
-                    reçoit, puis, à égalité sur ce point, minimiser la somme des notes de tout le
-                    monde.
+                    la façon la plus juste possible pour tout le monde : d'abord s'assurer que la
+                    moins bonne note attribuée à quelqu'un soit la plus faible possible, puis, à
+                    égalité sur ce point, minimiser la somme des notes de tout le monde.
                 </Text>
             </Box>
 
@@ -29,76 +29,74 @@ export default function HowItWorksPage() {
                             Vous notez chaque service
                         </Text>{' '}
                         sur une échelle à 4 niveaux (Excellent, Bien, Indifférent, Passable), sans
-                        voir les votes des autres — votre note reflète votre vraie préférence, pas
-                        une réaction stratégique à ce que les autres ont dit.
+                        voir les votes des autres — votre note reflète simplement ce que vous
+                        ressentez, rien d'autre.
                     </Text>
                     <Text>
                         <Text as="span" fontWeight="semibold">
                             Une fois votre propre vote verrouillé
                         </Text>
                         , vous pouvez lire les votes de tout le monde et recalculer vous-même le
-                        résultat. Personne n'a besoin de faire confiance à un calcul caché : c'est
-                        vérifiable par n'importe qui, à tout moment, à partir des mêmes données.
+                        résultat, à tout moment. Rien n'est caché : c'est vérifiable par n'importe
+                        qui, à partir des mêmes données.
                     </Text>
                     <Text>
                         <Text as="span" fontWeight="semibold">
                             Le tirage au sort qui départage les ex æquo
                         </Text>{' '}
                         n'est décidé par personne : il est calculé à partir du contenu de tous les
-                        votes verrouillés. Personne ne peut se positionner favorablement, puisque
-                        l'ordre n'existe qu'une fois que tous les votes sont figés.
+                        votes, une fois qu'ils sont tous verrouillés. Personne — pas même
+                        l'organisateur — ne peut influencer cet ordre.
                     </Text>
                 </VStack>
             </Box>
 
             <Box>
                 <Heading size="md" mb={2}>
-                    Essayer de « jouer » le système, ça marche ?
+                    Bonne nouvelle : être honnête, c'est déjà la meilleure stratégie
                 </Heading>
                 <Text mb={3}>
-                    On a testé : un participant qui exagère ses votes (uniquement « j'adore » ou «
-                    je déteste », sans jamais utiliser les niveaux intermédiaires) obtient-il un
-                    meilleur résultat qu'en votant honnêtement ?
-                </Text>
-                <Text mb={3}>
-                    Sur 1000 situations aléatoires simulées, en comparant à chaque fois ce que la
-                    personne obtient réellement (pas ce qu'elle prétend ressentir) :
+                    On pourrait se demander s'il vaut mieux exagérer ses votes (ne noter que «
+                    j'adore » ou « je déteste », sans jamais utiliser les niveaux intermédiaires)
+                    pour essayer d'obtenir un meilleur résultat. On a vérifié, sur 1000 situations
+                    simulées, en comparant à chaque fois ce que la personne obtient réellement (pas
+                    ce qu'elle prétend ressentir) :
                 </Text>
                 <VStack gap={1} align="stretch" mb={3} pl={2}>
                     <Text>
-                        — Ça l'aide vraiment dans{' '}
+                        — Ça n'aide vraiment que dans{' '}
                         <Text as="span" fontWeight="bold">
                             moins de 1 % des cas
                         </Text>
                         .
                     </Text>
                     <Text>
-                        — Ça se retourne contre elle dans{' '}
+                        — Ça se retourne contre soi dans{' '}
                         <Text as="span" fontWeight="bold">
                             plus de 40 % des cas
-                        </Text>{' '}
-                        — plus de 50 fois plus souvent que ça ne l'aide.
+                        </Text>
+                        .
                     </Text>
                 </VStack>
                 <Text colorPalette="gray" fontSize="sm">
-                    En écrasant ses nuances (un « bien » maquillé en faux « excellent »), on efface
-                    l'information qui permet à l'algorithme de repérer son vrai favori en cas
-                    d'égalité, et on perd le compromis « acceptable » qu'on aurait pu offrir si son
-                    premier choix n'est pas disponible.
+                    Vos notes intermédiaires sont ce qui permet à l'algorithme de repérer votre vrai
+                    favori en cas d'égalité, et de vous proposer un compromis acceptable si votre
+                    premier choix n'est pas disponible. Les exagérer, c'est se priver soi-même de
+                    cette marge de manœuvre — la note qui correspond le mieux à ce que vous
+                    ressentez vraiment est aussi, statistiquement, votre meilleur choix.
                 </Text>
             </Box>
 
             <Box>
                 <Heading size="md" mb={2}>
-                    Ce n'est pas une garantie absolue
+                    Une précision, pour être complet
                 </Heading>
                 <Text>
-                    Un résultat théorique (Zhou, 1990) dit qu'aucun mécanisme ne peut être à la fois
-                    efficace, juste, et totalement à l'épreuve de la triche. Ce système choisit
-                    l'efficacité et la justice, et récupère l'essentiel — pas la totalité — de
-                    l'honnêteté : dans des cas particuliers, exagérer un écart peut légèrement
-                    aider. Mais comme le montre le test ci-dessus, l'honnêteté reste la meilleure
-                    stratégie dans l'immense majorité des situations.
+                    Un résultat théorique (Zhou, 1990) montre qu'aucun mécanisme ne peut être à la
+                    fois parfaitement efficace, juste, et totalement insensible à toute stratégie.
+                    Ce système privilégie l'efficacité et la justice, et récupère l'essentiel de
+                    l'honnêteté — pas dans 100 % des cas imaginables, mais dans l'immense majorité
+                    des situations réelles, comme le montre le test ci-dessus.
                 </Text>
             </Box>
 
