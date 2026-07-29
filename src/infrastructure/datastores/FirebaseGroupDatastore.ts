@@ -16,6 +16,7 @@ import {
     getDocs,
     onSnapshot,
     query,
+    QueryDocumentSnapshot,
     runTransaction,
     setDoc,
     where
@@ -43,9 +44,27 @@ export class FirebaseGroupDatastore implements GroupRepository {
                 return null
             }
             return toGroupEntity(snapshot.data() as FirebaseGroupDocument)
-        } catch (_err) {
+        } catch (err) {
+            console.error(`Error reading group ${id.value}:`, err)
             return null
         }
+    }
+
+    // Maps every doc individually rather than a single `.map()` over the
+    // whole batch — one document that fails to parse (e.g. an older shape a
+    // migration missed) must not blank out every other group in the same
+    // list. Logged rather than silently dropped, so a real mapping bug is
+    // discoverable instead of just quietly hiding groups from "My groups".
+    private mapGroupDocs(docs: QueryDocumentSnapshot[]): GroupEntity[] {
+        const groups: GroupEntity[] = []
+        for (const docSnapshot of docs) {
+            try {
+                groups.push(toGroupEntity(docSnapshot.data() as FirebaseGroupDocument))
+            } catch (err) {
+                console.error(`Skipping unreadable group document ${docSnapshot.id}:`, err)
+            }
+        }
+        return groups
     }
 
     async findCreatedByCurrentUser(): Promise<GroupEntity[]> {
@@ -57,10 +76,9 @@ export class FirebaseGroupDatastore implements GroupRepository {
         try {
             const q = query(this.collection, where('createdBy', '==', uid))
             const snapshot = await getDocs(q)
-            return snapshot.docs.map(docSnapshot =>
-                toGroupEntity(docSnapshot.data() as FirebaseGroupDocument)
-            )
-        } catch (_err) {
+            return this.mapGroupDocs(snapshot.docs)
+        } catch (err) {
+            console.error('Error querying groups created by current user:', err)
             return []
         }
     }
@@ -69,10 +87,9 @@ export class FirebaseGroupDatastore implements GroupRepository {
         try {
             const q = query(this.collection, where('memberUids', 'array-contains', userId.value))
             const snapshot = await getDocs(q)
-            return snapshot.docs.map(docSnapshot =>
-                toGroupEntity(docSnapshot.data() as FirebaseGroupDocument)
-            )
-        } catch (_err) {
+            return this.mapGroupDocs(snapshot.docs)
+        } catch (err) {
+            console.error('Error querying groups by member:', err)
             return []
         }
     }
