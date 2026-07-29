@@ -125,8 +125,9 @@ export function MembershipPanel({
                     <Box>
                         {group.status === 'open' && !group.inviteOpen ? (
                             <Text fontSize="xs" colorPalette="gray">
-                                Les membres sont verrouillés définitivement depuis l'activation du
-                                vote — pour l'équité, plus personne ne peut rejoindre désormais.
+                                Les membres sont verrouillés définitivement depuis l'activation de
+                                la notation — pour l'équité, plus personne ne peut rejoindre
+                                désormais.
                             </Text>
                         ) : (
                             <>
@@ -205,7 +206,7 @@ export function MembershipPanel({
                     <Box as="form" onSubmit={join}>
                         <VStack gap={3} align="stretch">
                             <Field.Root required>
-                                <Field.Label>Votre nom</Field.Label>
+                                <Field.Label>Ton nom</Field.Label>
                                 <Input
                                     value={displayName}
                                     onChange={event => setDisplayName(event.target.value)}
@@ -230,13 +231,13 @@ export function MembershipPanel({
                 <Box>
                     {voteLocked ? (
                         <Text fontSize="sm" colorPalette="gray">
-                            Vous ne pouvez plus quitter ce groupe : votre vote est verrouillé.
+                            Tu ne peux plus quitter ce groupe : tes notes sont verrouillées.
                         </Text>
                     ) : (
                         <>
                             <Text fontSize="sm" colorPalette="gray">
-                                Vous pouvez quitter ce groupe tant que votre vote n'est pas
-                                verrouillé.
+                                Tu peux quitter ce groupe tant que tes notes ne sont pas
+                                verrouillées.
                             </Text>
                             <Button
                                 size="sm"

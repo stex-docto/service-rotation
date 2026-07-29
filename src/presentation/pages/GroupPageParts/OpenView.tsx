@@ -93,8 +93,8 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
             <Box>
                 <Heading size="lg">{group.name}</Heading>
                 <Text colorPalette="gray">
-                    {progress.lockedCount} / {progress.totalMembers} membres ont verrouillé leur
-                    vote.
+                    {progress.lockedCount} / {progress.totalMembers} membres ont verrouillé leurs
+                    notes.
                 </Text>
                 <Progress.Root
                     value={progress.lockedCount}
@@ -124,11 +124,11 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
                     !computeResult && (
                         <Box borderWidth="1px" borderRadius="md" p={4}>
                             <Heading size="sm" mb={2}>
-                                Vote verrouillé
+                                Notes verrouillées
                             </Heading>
                             <Text colorPalette="gray">
-                                Votre vote est enregistré définitivement. Vous pouvez maintenant
-                                voir les résultats calculés à partir des votes déjà verrouillés.
+                                Tes notes sont enregistrées définitivement. Tu peux maintenant voir
+                                les résultats calculés à partir des notes déjà verrouillées.
                             </Text>
                         </Box>
                     )

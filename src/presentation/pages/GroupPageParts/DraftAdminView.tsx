@@ -245,7 +245,7 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                 <Box>
                     <Heading size="lg">{group.name}</Heading>
                     <Text colorPalette="gray">
-                        En attente que la personne ayant créé le groupe active le vote.
+                        En attente que la personne ayant créé le groupe active la notation.
                     </Text>
                 </Box>
 
@@ -570,12 +570,12 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
 
             <Box borderWidth="1px" borderColor="blue.300" borderRadius="md" shadow="sm" p={4}>
                 <Heading size="sm" mb={2}>
-                    Activer le vote
+                    Activer la notation
                 </Heading>
                 <Text fontSize="sm" colorPalette="gray" mb={4}>
                     Une fois activé, les services et les rotations sont figés définitivement, et les
                     membres sont verrouillés définitivement (plus aucune nouvelle inscription, pour
-                    l'équité entre membres). Les membres déjà inscrits peuvent commencer à voter.
+                    l'équité entre membres). Les membres déjà inscrits peuvent commencer à noter.
                 </Text>
                 <Button
                     colorPalette="blue"
@@ -585,7 +585,7 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                         services.length === 0 || rotationSlots.length === 0 || servicesShortfall
                     }
                 >
-                    Activer le vote
+                    Activer la notation
                 </Button>
             </Box>
         </VStack>
