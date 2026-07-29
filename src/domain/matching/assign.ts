@@ -80,6 +80,21 @@ function buildNetwork(
     const edges: EdgeMeta[] = []
     let callIndex = 0
 
+    // Cap on how many rotations a single student can spend at the same
+    // service. 1 (never repeat) unless the caller opted in AND there are
+    // genuinely fewer services than rotations — in which case it's simply
+    // `rotations` (the same natural bound already used on the source->student
+    // edge), i.e. no artificial cap at all: once a repeat is structurally
+    // unavoidable, min-cost flow decides the split purely on grades. An
+    // evenly-spreading cap (e.g. ceil(rotations / m)) was considered and
+    // rejected — when m divides rotations it forces an exact split
+    // regardless of grades, and with uneven service capacities it can reject
+    // a schedule that's genuinely feasible. Always exactly 1 whenever
+    // services.length >= rotations, so this never changes behaviour for the
+    // classic case.
+    const perStudentServiceCap =
+        input.allowRepeatedServices && m > 0 && m < input.rotations ? input.rotations : 1
+
     input.lotteryOrder.forEach((studentId, i) => {
         graph.addEdge(source, studentNode(i), input.rotations, 0)
         callIndex++ // source->student edges also consume a call slot
@@ -90,7 +105,7 @@ function buildNetwork(
             if (realCost === undefined || realCost > costLimit) return
 
             const perturbedCost = realCost * tieBreakScale + (rankOf.get(studentId) as number)
-            graph.addEdge(studentNode(i), serviceNode(j), 1, perturbedCost)
+            graph.addEdge(studentNode(i), serviceNode(j), perStudentServiceCap, perturbedCost)
             edges.push({ studentId, serviceId: service.serviceId, realCost, callIndex })
             callIndex++
         })
@@ -127,11 +142,14 @@ function extractAssignment(
     let worstCost = -Infinity
 
     for (const edge of network.edges) {
-        if (network.graph.flowOnEdgeAt(edge.callIndex) !== 1) continue
+        // Usually 0 or 1; can exceed 1 when allowRepeatedServices raised this
+        // edge's capacity — one push per unit of flow, one realCost per visit.
+        const flowOnEdge = network.graph.flowOnEdgeAt(edge.callIndex)
+        if (flowOnEdge === 0) continue
         const list = assignment.get(edge.studentId) ?? []
-        list.push(edge.serviceId)
+        for (let visit = 0; visit < flowOnEdge; visit++) list.push(edge.serviceId)
         assignment.set(edge.studentId, list)
-        totalCost += edge.realCost
+        totalCost += edge.realCost * flowOnEdge
         worstCost = Math.max(worstCost, edge.realCost)
     }
 
@@ -217,17 +235,26 @@ export function computeAssignment(input: MatchingInput): MatchingResult {
 }
 
 // Structural feasibility check, independent of any votes: whether there are
-// even enough distinct services to fill every rotation. Grade-driven
-// infeasibility (not enough capacity for how many members actually voted) is
-// instead discovered by computeAssignment itself, at compute time, over
-// whoever's votes are readable then — there is no fixed roster to check this
-// against upfront any more, since membership is open until the owner closes
-// the invite.
+// even enough services to fill every rotation. Grade-driven infeasibility
+// (not enough capacity for how many members actually voted) is instead
+// discovered by computeAssignment itself, at compute time, over whoever's
+// votes are readable then — there is no fixed roster to check this against
+// upfront any more, since membership is open until the owner closes the
+// invite.
+//
+// Without allowRepeatedServices, a student can never revisit a service, so
+// there must be at least as many services as rotations. With it, a repeat
+// can fill the gap (see buildNetwork's perStudentServiceCap), so the only
+// thing that can never be satisfied is having zero services at all.
 export function checkStructuralFeasibility(
     services: ServiceCapacity[],
-    rotations: number
+    rotations: number,
+    allowRepeatedServices: boolean
 ): { feasible: boolean; reason?: string } {
-    if (services.length < rotations) {
+    if (services.length === 0 && rotations > 0) {
+        return { feasible: false, reason: 'Add at least one service.' }
+    }
+    if (!allowRepeatedServices && services.length < rotations) {
         return { feasible: false, reason: 'There must be at least as many services as rotations.' }
     }
     return { feasible: true }

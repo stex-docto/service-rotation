@@ -35,7 +35,8 @@ export class OpenGroupUseCase {
                 serviceId: service.id.value,
                 capacityPerRotation: service.capacity
             })),
-            group.rotations
+            group.rotations,
+            group.allowRepeatedServices
         )
         if (!feasibility.feasible) {
             throw new Error(

@@ -29,7 +29,13 @@ describe('computeAssignment: determinism', () => {
             studentId,
             costs: new Map(services.map((service, j) => [service.serviceId, (i + j) % 4]))
         }))
-        const input: MatchingInput = { rotations: 2, services, students, lotteryOrder }
+        const input: MatchingInput = {
+            rotations: 2,
+            services,
+            students,
+            lotteryOrder,
+            allowRepeatedServices: false
+        }
 
         const first = computeAssignment(input)
         const second = computeAssignment(input)
@@ -67,7 +73,13 @@ describe('computeAssignment: invariants under random feasible instances', () => 
                 costs: new Map(services.map(service => [service.serviceId, Math.floor(rng() * 4)]))
             }))
 
-            const input: MatchingInput = { rotations, services, students, lotteryOrder }
+            const input: MatchingInput = {
+                rotations,
+                services,
+                students,
+                lotteryOrder,
+                allowRepeatedServices: false
+            }
 
             let result
             try {
@@ -133,7 +145,13 @@ describe('computeAssignment: minimax optimality against a brute-force oracle', (
                 costs: new Map(services.map(service => [service.serviceId, Math.floor(rng() * 4)]))
             }))
 
-            const input: MatchingInput = { rotations: 1, services, students, lotteryOrder }
+            const input: MatchingInput = {
+                rotations: 1,
+                services,
+                students,
+                lotteryOrder,
+                allowRepeatedServices: false
+            }
 
             let result
             try {
@@ -179,7 +197,13 @@ describe('computeAssignment: hand-verified golden case', () => {
             costs: new Map(services.map((service, i) => [service.serviceId, grades[studentId][i]]))
         }))
 
-        const result = computeAssignment({ rotations: 1, services, students, lotteryOrder })
+        const result = computeAssignment({
+            rotations: 1,
+            services,
+            students,
+            lotteryOrder,
+            allowRepeatedServices: false
+        })
 
         expect(result.worstCost).toBe(1)
         expect(result.totalCost).toBe(1)
@@ -196,13 +220,13 @@ describe('computeAssignment: hand-verified golden case', () => {
 })
 
 describe('checkStructuralFeasibility', () => {
-    it('flags fewer services than rotations', () => {
+    it('flags fewer services than rotations when repeats are not allowed', () => {
         const services: ServiceCapacity[] = [
             { serviceId: 'S1', capacityPerRotation: 10 },
             { serviceId: 'S2', capacityPerRotation: 10 }
         ]
 
-        const { feasible, reason } = checkStructuralFeasibility(services, 3)
+        const { feasible, reason } = checkStructuralFeasibility(services, 3, false)
 
         expect(feasible).toBe(false)
         expect(reason).toBeTruthy()
@@ -215,9 +239,250 @@ describe('checkStructuralFeasibility', () => {
             { serviceId: 'S3', capacityPerRotation: 10 }
         ]
 
-        const { feasible } = checkStructuralFeasibility(services, 3)
+        const { feasible } = checkStructuralFeasibility(services, 3, false)
 
         expect(feasible).toBe(true)
+    })
+
+    it('passes with fewer services than rotations once repeats are allowed', () => {
+        const services: ServiceCapacity[] = [
+            { serviceId: 'S1', capacityPerRotation: 10 },
+            { serviceId: 'S2', capacityPerRotation: 10 }
+        ]
+
+        const { feasible } = checkStructuralFeasibility(services, 3, true)
+
+        expect(feasible).toBe(true)
+    })
+
+    it('still flags zero services even with repeats allowed', () => {
+        const { feasible, reason } = checkStructuralFeasibility([], 3, true)
+
+        expect(feasible).toBe(false)
+        expect(reason).toBeTruthy()
+    })
+})
+
+describe('computeAssignment: allowRepeatedServices', () => {
+    it('repeats services to fill every rotation when there are fewer services than rotations', () => {
+        // 2 services, 5 rotations: no way to give 5 distinct services, so
+        // each student must repeat. No artificial cap on how the repeats
+        // split — only that per-rotation capacity is respected.
+        const services: ServiceCapacity[] = [
+            { serviceId: 'S1', capacityPerRotation: 10 },
+            { serviceId: 'S2', capacityPerRotation: 10 }
+        ]
+        const lotteryOrder = ['alice', 'bob', 'carol']
+        const students = lotteryOrder.map(studentId => ({
+            studentId,
+            costs: new Map(services.map(service => [service.serviceId, 0]))
+        }))
+
+        const result = computeAssignment({
+            rotations: 5,
+            services,
+            students,
+            lotteryOrder,
+            allowRepeatedServices: true
+        })
+
+        for (const assignment of result.assignments) {
+            expect(assignment.rotationServiceIds).toHaveLength(5)
+            for (const serviceId of assignment.rotationServiceIds) {
+                expect(['S1', 'S2']).toContain(serviceId)
+            }
+        }
+    })
+
+    it('lets grades decide the split with no artificial spread cap', () => {
+        // Nothing stops a student from parking in their single cheapest
+        // service for every rotation once repeats are allowed — that's the
+        // accepted trade-off of having no artificial cap (a spread-forcing
+        // cap was considered and rejected, see buildNetwork's
+        // perStudentServiceCap comment).
+        const services: ServiceCapacity[] = [
+            { serviceId: 'Cheap', capacityPerRotation: 10 },
+            { serviceId: 'Expensive', capacityPerRotation: 10 }
+        ]
+        const lotteryOrder = ['alice']
+        const students = [
+            {
+                studentId: 'alice',
+                costs: new Map([
+                    ['Cheap', 0],
+                    ['Expensive', 3]
+                ])
+            }
+        ]
+
+        const result = computeAssignment({
+            rotations: 5,
+            services,
+            students,
+            lotteryOrder,
+            allowRepeatedServices: true
+        })
+
+        expect(result.assignments[0].rotationServiceIds).toEqual(new Array(5).fill('Cheap'))
+    })
+
+    it('does not spuriously reject a feasible schedule when service capacities are uneven', () => {
+        // Regression for a flawed earlier design: capping every student at
+        // ceil(rotations / services.length) = ceil(4/2) = 2 visits per
+        // service forced 3 students to demand 2*3 = 6 total visits to S1,
+        // against only 4 available (rotations * capacityPerRotation) — a
+        // false InfeasibleError, even though a 1+3 split per student fits
+        // easily. With no artificial cap this is genuinely feasible.
+        const services: ServiceCapacity[] = [
+            { serviceId: 'S1', capacityPerRotation: 1 },
+            { serviceId: 'S2', capacityPerRotation: 100 }
+        ]
+        const lotteryOrder = ['student-a', 'student-b', 'student-c']
+        const students = lotteryOrder.map(studentId => ({
+            studentId,
+            costs: new Map(services.map(service => [service.serviceId, 0]))
+        }))
+
+        expect(() =>
+            computeAssignment({
+                rotations: 4,
+                services,
+                students,
+                lotteryOrder,
+                allowRepeatedServices: true
+            })
+        ).not.toThrow()
+    })
+
+    it('throws InfeasibleError instead of repeating when the flag is off', () => {
+        const services: ServiceCapacity[] = [
+            { serviceId: 'S1', capacityPerRotation: 10 },
+            { serviceId: 'S2', capacityPerRotation: 10 }
+        ]
+        const lotteryOrder = ['alice', 'bob', 'carol']
+        const students = lotteryOrder.map(studentId => ({
+            studentId,
+            costs: new Map(services.map(service => [service.serviceId, 0]))
+        }))
+
+        expect(() =>
+            computeAssignment({
+                rotations: 5,
+                services,
+                students,
+                lotteryOrder,
+                allowRepeatedServices: false
+            })
+        ).toThrow(InfeasibleError)
+    })
+
+    it('never repeats when there are already at least as many services as rotations', () => {
+        // allowRepeatedServices: true, but services.length >= rotations means
+        // the per-pair cap is still exactly 1 — same distinct-services
+        // behaviour as before, no regression for the classic case.
+        const services: ServiceCapacity[] = [
+            { serviceId: 'S1', capacityPerRotation: 2 },
+            { serviceId: 'S2', capacityPerRotation: 2 },
+            { serviceId: 'S3', capacityPerRotation: 2 }
+        ]
+        const lotteryOrder = ['alice', 'bob', 'carol']
+        const students = lotteryOrder.map((studentId, i) => ({
+            studentId,
+            costs: new Map(services.map((service, j) => [service.serviceId, (i + j) % 3]))
+        }))
+
+        const result = computeAssignment({
+            rotations: 3,
+            services,
+            students,
+            lotteryOrder,
+            allowRepeatedServices: true
+        })
+
+        for (const assignment of result.assignments) {
+            expect(new Set(assignment.rotationServiceIds).size).toBe(3)
+        }
+    })
+
+    it('holds under random instances with tight capacities, including fewer services than rotations', () => {
+        // Mirrors "invariants under random feasible instances" above, but
+        // allows serviceCount below rotations (forcing real repeats) and
+        // keeps capacities tight (as low as 1) — per CLAUDE.md, the two
+        // historical bugs in this module (a Set-based padding step that
+        // silently dropped multi-edges, and an unbounded tie-break constant)
+        // only surfaced under tight capacity, not generous capacity. Real
+        // student->copy multiplicity > 1 in scheduleRotations is only
+        // exercised when capacity is tight enough that a service needs just
+        // one copy, so a generous-capacity sweep would never reach it.
+        let trialsRun = 0
+        let repeatTrialsRun = 0
+
+        for (let trial = 0; trial < 300; trial++) {
+            const rng = mulberry32(9000 + trial)
+            const rotations = 1 + Math.floor(rng() * 6) // 1..6
+            const serviceCount = 1 + Math.floor(rng() * 10) // 1..10, may be below rotations
+            const studentCount = 2 + Math.floor(rng() * 60) // 2..61
+
+            const services: ServiceCapacity[] = Array.from({ length: serviceCount }, (_, i) => ({
+                serviceId: `svc${i}`,
+                capacityPerRotation: 1 + Math.floor(rng() * 20) // 1..20 — tight capacities matter
+            }))
+
+            const lotteryOrder = Array.from({ length: studentCount }, (_, i) => `student${i}`)
+            const students = lotteryOrder.map(studentId => ({
+                studentId,
+                costs: new Map(services.map(service => [service.serviceId, Math.floor(rng() * 4)]))
+            }))
+
+            const input: MatchingInput = {
+                rotations,
+                services,
+                students,
+                lotteryOrder,
+                allowRepeatedServices: true
+            }
+
+            let result
+            try {
+                result = computeAssignment(input)
+            } catch (error) {
+                if (error instanceof InfeasibleError) continue // tight capacities make this common; skip defensively
+                throw error
+            }
+            trialsRun++
+            if (serviceCount < rotations) repeatTrialsRun++
+            const gradesByStudent = new Map(students.map(s => [s.studentId, s.costs]))
+
+            for (const assignment of result.assignments) {
+                expect(assignment.rotationServiceIds).toHaveLength(rotations)
+
+                const grades = gradesByStudent.get(assignment.studentId) as Map<string, number>
+                for (const serviceId of assignment.rotationServiceIds) {
+                    expect(grades.has(serviceId)).toBe(true)
+                }
+            }
+
+            for (let rotation = 0; rotation < rotations; rotation++) {
+                const countByService = new Map<string, number>()
+                for (const assignment of result.assignments) {
+                    const serviceId = assignment.rotationServiceIds[rotation]
+                    countByService.set(serviceId, (countByService.get(serviceId) ?? 0) + 1)
+                }
+                for (const service of services) {
+                    expect(countByService.get(service.serviceId) ?? 0).toBeLessThanOrEqual(
+                        service.capacityPerRotation
+                    )
+                }
+            }
+
+            expect(result.theoreticalMinTotalCost).toBeLessThanOrEqual(result.totalCost)
+        }
+
+        // Guards against every trial being skipped (feasibility) or the
+        // serviceCount < rotations branch never actually firing, either of
+        // which would let this test pass vacuously.
+        expect(trialsRun).toBeGreaterThan(50)
+        expect(repeatTrialsRun).toBeGreaterThan(10)
     })
 })
 
@@ -240,9 +505,15 @@ describe('computeAssignment: capacity infeasibility', () => {
             costs: new Map(services.map(service => [service.serviceId, 0]))
         }))
 
-        expect(() => computeAssignment({ rotations: 3, services, students, lotteryOrder })).toThrow(
-            InfeasibleError
-        )
+        expect(() =>
+            computeAssignment({
+                rotations: 3,
+                services,
+                students,
+                lotteryOrder,
+                allowRepeatedServices: false
+            })
+        ).toThrow(InfeasibleError)
     })
 
     it('confirms the same services are feasible with one fewer mandatory rotation', () => {
@@ -261,7 +532,13 @@ describe('computeAssignment: capacity infeasibility', () => {
         }))
 
         expect(() =>
-            computeAssignment({ rotations: 2, services, students, lotteryOrder })
+            computeAssignment({
+                rotations: 2,
+                services,
+                students,
+                lotteryOrder,
+                allowRepeatedServices: false
+            })
         ).not.toThrow()
     })
 })

@@ -4,6 +4,7 @@ import { SignInUseCase } from '@application'
 export interface UpdateGroupSettingsCommand {
     groupId: GroupId
     name?: string
+    allowRepeatedServices?: boolean
 }
 
 export interface UpdateGroupSettingsResult {
@@ -28,7 +29,8 @@ export class UpdateGroupSettingsUseCase {
         }
 
         const updatedGroup = group.updateSettings({
-            name: command.name
+            name: command.name,
+            allowRepeatedServices: command.allowRepeatedServices
         })
 
         await this.groupRepository.save(updatedGroup)

@@ -21,8 +21,12 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
   membership while still a draft: lock/unlock the roster against new joins,
   and ban an individual member (banning stays available at any time, and a
   banned member can't simply rejoin — the organizer can undo a ban, but only
-  while the roster isn't locked). Enabling voting (freezing services/rotations)
-  is the only other control,
+  while the roster isn't locked). A group with fewer services than rotations
+  can't open unless the organizer explicitly allows a student to repeat a
+  service across rotations (off by default — the UI flags the shortfall and
+  blocks opening until either more services are added, a rotation is
+  removed, or the setting is turned on). Enabling voting (freezing
+  services/rotations) is the only other control,
   and locks the roster for good in the same step — for fairness, nobody can
   join after other members have already started grading. From then on
   there's no privileged access to anyone's grades, including the
@@ -46,11 +50,17 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
 
 1. **Input**: each intern grades every service once — Excellent, Bien,
    Indifférent, or Passable. Every grade is assignable; there is no veto and
-   no cap. One sheet drives every rotation; a student never repeats a service.
+   no cap. One sheet drives every rotation; a student never repeats a service
+   — unless the organizer opts into `allowRepeatedServices` (off by default),
+   which only matters once there are fewer services than rotations: without
+   it, that group simply can't open (see `checkStructuralFeasibility`); with
+   it, a student may be assigned the same service more than once, with no cap
+   on the repeat beyond `rotations` itself — the min-cost objective decides
+   the split purely on grades.
 2. **Phase 1 — min-cost flow** picks each student's set of `k` (=rotations)
-   distinct services, minimising the worst grade anyone receives first
-   (binary search over the 4 levels), then the total among solutions tied on
-   that worst grade.
+   services — distinct unless `allowRepeatedServices` is on and required —
+   minimising the worst grade anyone receives first (binary search over the 4
+   levels), then the total among solutions tied on that worst grade.
 3. **Phase 2 — bipartite edge colouring** schedules that fixed service set
    into `k` rotations respecting per-rotation capacity. Always succeeds once
    phase 1 does — see `src/domain/matching/edgeColouring.ts`.

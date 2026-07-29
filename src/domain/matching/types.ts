@@ -35,11 +35,21 @@ export interface MatchingInput {
     // Every student id, ranked by the pre-committed lottery (index 0 = first
     // rank). This is the sole source of tie-break determinism — see assign.ts.
     lotteryOrder: string[]
+    // When false (the default), each student's rotationServiceIds are all
+    // distinct — the classic "k different services" contract, enforced
+    // regardless of services.length. When true AND services.length <
+    // rotations, a student may be assigned the same service more than once —
+    // the only way to still fill every rotation — with no cap beyond
+    // `rotations` itself: min-cost flow decides the split purely on grades
+    // (see buildNetwork's perStudentServiceCap). Whenever
+    // services.length >= rotations this has no effect either way.
+    allowRepeatedServices: boolean
 }
 
 export interface StudentAssignment {
     studentId: string
-    // Index r is the service for rotation r. Always `rotations` distinct ids.
+    // Index r is the service for rotation r. Always `rotations` entries;
+    // distinct unless allowRepeatedServices was set on the input.
     rotationServiceIds: string[]
 }
 
