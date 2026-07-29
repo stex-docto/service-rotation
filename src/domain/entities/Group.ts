@@ -33,6 +33,12 @@ export interface Group {
     members: MemberSet
     rotationSlots: RotationSlot[]
     rotationMode: RotationMode
+    // Whether a student may be assigned the same service more than once —
+    // false by default, matching the classic "k distinct services" contract.
+    // Only meaningful once services.length < rotations; otherwise the
+    // matching engine never needs to repeat anyway. See assign.ts's
+    // allowRepeatedServices and checkStructuralFeasibility.
+    allowRepeatedServices: boolean
     // Whether the invite link still accepts new self-joins — true from
     // creation, in both 'draft' and 'open'. Only the creator can lock it —
     // see closeInvite — but it's group configuration, not a standing
@@ -57,6 +63,7 @@ export class GroupEntity implements Group {
         public readonly members: MemberSet,
         public readonly rotationSlots: RotationSlot[],
         public readonly rotationMode: RotationMode,
+        public readonly allowRepeatedServices: boolean,
         public readonly inviteOpen: boolean,
         public readonly bannedMembers: MemberSet,
         public readonly createdBy: UserId,
@@ -78,6 +85,7 @@ export class GroupEntity implements Group {
             new MemberSet(),
             [],
             'name',
+            false,
             true,
             new MemberSet(),
             createdBy,
@@ -91,7 +99,7 @@ export class GroupEntity implements Group {
         }
     }
 
-    updateSettings(options: { name?: string }): GroupEntity {
+    updateSettings(options: { name?: string; allowRepeatedServices?: boolean }): GroupEntity {
         this.requireDraft('update settings')
 
         return new GroupEntity(
@@ -102,6 +110,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             this.rotationMode,
+            options.allowRepeatedServices ?? this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
@@ -134,6 +143,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             this.rotationMode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
@@ -155,6 +165,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             this.rotationMode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
@@ -176,6 +187,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             this.rotationMode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
@@ -194,6 +206,7 @@ export class GroupEntity implements Group {
             this.members,
             [...this.rotationSlots, emptyRotationSlot()],
             this.rotationMode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
@@ -215,6 +228,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots.filter((_, i) => i !== index),
             this.rotationMode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
@@ -236,6 +250,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots.map((slot, i) => (i === index ? { ...slot, ...changes } : slot)),
             this.rotationMode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
@@ -256,6 +271,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             mode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
@@ -277,7 +293,10 @@ export class GroupEntity implements Group {
         if (this.rotationSlots.length === 0) {
             throw new Error('Add at least one rotation before opening')
         }
-        if (this.services.size < this.rotations) {
+        if (this.services.size === 0) {
+            throw new Error('Add at least one service before opening')
+        }
+        if (!this.allowRepeatedServices && this.services.size < this.rotations) {
             throw new Error('There must be at least as many services as rotations')
         }
 
@@ -289,6 +308,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             this.rotationMode,
+            this.allowRepeatedServices,
             false,
             this.bannedMembers,
             this.createdBy,
@@ -319,6 +339,7 @@ export class GroupEntity implements Group {
             this.members.add(entry),
             this.rotationSlots,
             this.rotationMode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
@@ -344,6 +365,7 @@ export class GroupEntity implements Group {
             this.members.remove(userId),
             this.rotationSlots,
             this.rotationMode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
@@ -369,6 +391,7 @@ export class GroupEntity implements Group {
             this.members.remove(userId),
             this.rotationSlots,
             this.rotationMode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers.add(entry),
             this.createdBy,
@@ -398,6 +421,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             this.rotationMode,
+            this.allowRepeatedServices,
             this.inviteOpen,
             this.bannedMembers.remove(userId),
             this.createdBy,
@@ -420,6 +444,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             this.rotationMode,
+            this.allowRepeatedServices,
             false,
             this.bannedMembers,
             this.createdBy,
@@ -444,6 +469,7 @@ export class GroupEntity implements Group {
             this.members,
             this.rotationSlots,
             this.rotationMode,
+            this.allowRepeatedServices,
             true,
             this.bannedMembers,
             this.createdBy,

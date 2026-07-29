@@ -46,5 +46,11 @@ export function buildMatchingInput(group: GroupEntity, votes: VoteEntity[]): Mat
         return { studentId: vote.userId.value, costs }
     })
 
-    return { rotations: group.rotations, services, students, lotteryOrder }
+    return {
+        rotations: group.rotations,
+        services,
+        students,
+        lotteryOrder,
+        allowRepeatedServices: group.allowRepeatedServices
+    }
 }
