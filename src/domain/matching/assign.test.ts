@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { checkStructuralFeasibility, computeAssignment } from './assign'
+import { bruteForceOptimal } from './bruteForceOracle'
 import { InfeasibleError, MatchingInput, ServiceCapacity } from './types'
 
 // Deterministic PRNG (mulberry32) so property tests are reproducible across
@@ -13,50 +14,6 @@ function mulberry32(seed: number) {
         t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296
     }
-}
-
-// Brute-force reference oracle. Only valid for rotations === 1 (a single
-// service per student, no rotation scheduling) — used to independently
-// verify that the algorithm's minimax threshold and total are truly optimal,
-// not just internally consistent.
-function bruteForceOptimal(input: MatchingInput): { worst: number; total: number } {
-    const remainingCapacity = new Map(input.services.map(s => [s.serviceId, s.capacityPerRotation]))
-    const gradesByStudent = new Map(input.students.map(s => [s.studentId, s.costs]))
-    let best: { worst: number; total: number } | null = null
-
-    function consider(costs: number[]): void {
-        const worst = Math.max(...costs)
-        const total = costs.reduce((sum, cost) => sum + cost, 0)
-        if (!best || worst < best.worst || (worst === best.worst && total < best.total)) {
-            best = { worst, total }
-        }
-    }
-
-    function backtrack(index: number, costsSoFar: number[]): void {
-        if (index === input.lotteryOrder.length) {
-            consider(costsSoFar)
-            return
-        }
-        const studentId = input.lotteryOrder[index]
-        const grades = gradesByStudent.get(studentId) as Map<string, number>
-        for (const service of input.services) {
-            const capacity = remainingCapacity.get(service.serviceId) as number
-            if (capacity <= 0) continue
-            const cost = grades.get(service.serviceId)
-            if (cost === undefined) continue
-            remainingCapacity.set(service.serviceId, capacity - 1)
-            backtrack(index + 1, [...costsSoFar, cost])
-            remainingCapacity.set(service.serviceId, capacity)
-        }
-    }
-
-    backtrack(0, [])
-    if (!best) {
-        throw new Error(
-            'brute-force oracle found no feasible assignment — test instance is unsound'
-        )
-    }
-    return best
 }
 
 describe('computeAssignment: determinism', () => {
