@@ -7,12 +7,14 @@ import {
     HStack,
     IconButton,
     Input,
+    InputGroup,
     NumberInput,
     Separator,
+    Spinner,
     Text,
     VStack
 } from '@chakra-ui/react'
-import { MdDelete } from 'react-icons/md'
+import { MdCheck, MdDelete } from 'react-icons/md'
 import { CurrentUser, GroupEntity, RotationMode, RotationSlot, ServiceEntity } from '@domain'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
@@ -235,32 +237,31 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
     return (
         <VStack gap={8} align="stretch">
             <Box>
-                <Heading size="lg">{group.name}</Heading>
+                <InputGroup
+                    endElement={
+                        nameSaveState === 'saving' ? (
+                            <Spinner size="xs" />
+                        ) : nameSaveState === 'saved' ? (
+                            <MdCheck color="green" />
+                        ) : undefined
+                    }
+                >
+                    <Input
+                        aria-label="Nom du groupe"
+                        value={name}
+                        onChange={event => setName(event.target.value)}
+                        variant="flushed"
+                        fontSize="2xl"
+                        fontWeight="bold"
+                        px={0}
+                    />
+                </InputGroup>
                 <Text colorPalette="gray">Le vote n'est pas encore activé.</Text>
             </Box>
 
             <MembershipPanel group={group} isCreator currentUser={currentUser} />
 
             <ErrorMessage message={error} />
-
-            <Box borderWidth="1px" borderRadius="md" p={4}>
-                <Heading size="sm" mb={4}>
-                    Paramètres
-                </Heading>
-                <VStack gap={2} align="stretch">
-                    <Field.Root>
-                        <Field.Label>Nom du groupe</Field.Label>
-                        <Input value={name} onChange={event => setName(event.target.value)} />
-                    </Field.Root>
-                    <Text fontSize="xs" colorPalette="gray">
-                        {nameSaveState === 'saving'
-                            ? 'Enregistrement…'
-                            : nameSaveState === 'saved'
-                              ? 'Enregistré.'
-                              : ' '}
-                    </Text>
-                </VStack>
-            </Box>
 
             <Box borderWidth="1px" borderRadius="md" p={4}>
                 <HStack justify="space-between" mb={4}>
@@ -463,9 +464,10 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                     Activer le vote
                 </Heading>
                 <Text fontSize="sm" colorPalette="gray" mb={4}>
-                    Une fois activé, les services et les rotations sont figés définitivement. Les
-                    membres déjà inscrits peuvent commencer à voter ; d'autres peuvent continuer à
-                    rejoindre tant que vous n'avez pas verrouillé les membres ci-dessus.
+                    Une fois activé, les services et les rotations sont figés définitivement, et les
+                    membres sont automatiquement verrouillés (plus aucune nouvelle inscription) —
+                    vous pourrez les déverrouiller ensuite si besoin. Les membres déjà inscrits
+                    peuvent commencer à voter.
                 </Text>
                 <Button
                     colorPalette="blue"
