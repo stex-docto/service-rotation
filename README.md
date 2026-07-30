@@ -1,20 +1,20 @@
 # Affectation des Stages (service-rotation)
 
-A single-page web app for splitting a cohort of medical interns across hospital
+A single-page web app for splitting a cohort of medical externs across hospital
 services, rotation after rotation, using an outcome that minimises real
 dissatisfaction while remaining hard to game. Deployed on GitHub Pages with a
 Firebase (Firestore + Auth) backend — no server, no Cloud Functions.
 
 ## Why this isn't Gale-Shapley
 
-Only interns express preferences — services don't rank or veto anyone.
+Only externs express preferences — services don't rank or veto anyone.
 Deferred acceptance needs preferences on both sides, so this is one-sided
 assignment, not Gale-Shapley, despite the algorithmic lineage. See
 [Mechanism](#mechanism) for what it actually is.
 
 ## Features
 
-- **Organizer**: create a group and share its link immediately — interns can
+- **Organizer**: create a group and share its link immediately — externs can
   join from that moment, even while services and rotations (added/removed
   one at a time, either named freely or given a calendar date range, never
   both at once) are still being configured. Two standing controls cover
@@ -31,7 +31,7 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
   join after other members have already started grading. From then on
   there's no privileged access to anyone's grades, including the
   organizer's own.
-- **Interns**: sign in with Google, open the link, join with a display name
+- **Externs**: sign in with Google, open the link, join with a display name
   (no pre-registration, no need to wait for voting to be enabled), grade
   every service on a 4-level scale once voting is enabled, save the draft as
   many times as you like, then lock your vote once — no edits afterward. You
@@ -48,7 +48,7 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
 
 ## Mechanism
 
-1. **Input**: each intern grades every service once — Excellent, Bien,
+1. **Input**: each extern grades every service once — Excellent, Bien,
    Indifférent, or Passable. Every grade is assignable; there is no veto and
    no cap. One sheet drives every rotation; a student never repeats a service
    — unless the organizer opts into `allowRepeatedServices` (off by default).

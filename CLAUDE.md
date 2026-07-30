@@ -6,7 +6,7 @@ conventions, not the app's behavior.
 
 ## Project overview
 
-A single-page web app that splits medical interns across hospital services over several
+A single-page web app that splits medical externs across hospital services over several
 rotations, using a one-sided min-cost-flow assignment (minimax fairness, then
 minimise total) rather than Gale-Shapley — see README's "Why this isn't
 Gale-Shapley". React 19 + TypeScript + Vite + Chakra UI v3 + Firebase

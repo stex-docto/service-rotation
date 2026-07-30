@@ -81,7 +81,7 @@ export function LiveResultView({ group, computeResult }: LiveResultViewProps) {
                 <Table.Root size="md">
                     <Table.Header>
                         <Table.Row>
-                            <Table.ColumnHeader>Interne</Table.ColumnHeader>
+                            <Table.ColumnHeader>Externe</Table.ColumnHeader>
                             {rotationHeaders.map(header => (
                                 <Table.ColumnHeader key={header}>{header}</Table.ColumnHeader>
                             ))}
@@ -158,7 +158,7 @@ export function LiveResultView({ group, computeResult }: LiveResultViewProps) {
                 <Table.Root size="sm">
                     <Table.Header>
                         <Table.Row>
-                            <Table.ColumnHeader>Interne</Table.ColumnHeader>
+                            <Table.ColumnHeader>Externe</Table.ColumnHeader>
                             {group.getServices().map(service => (
                                 <Table.ColumnHeader key={service.id.value}>
                                     {service.name}

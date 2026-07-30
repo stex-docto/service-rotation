@@ -110,7 +110,7 @@ export default function HomePage() {
             <VStack gap={6} py={16} textAlign="center">
                 <Heading size="lg">Affectation des Stages</Heading>
                 <Text maxW="480px" colorPalette="gray">
-                    Répartissez équitablement les internes entre les services de stage, rotation
+                    Répartissez équitablement les externes entre les services de stage, rotation
                     après rotation, sans possibilité de tricher sur ses choix.
                 </Text>
                 <Button

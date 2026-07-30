@@ -10,7 +10,7 @@ export default function HowItWorksPage() {
                     L'objectif
                 </Heading>
                 <Text>
-                    Répartir les internes entre les services de stage, rotation après rotation, de
+                    Répartir les externes entre les services de stage, rotation après rotation, de
                     la façon la plus juste possible pour tout le monde : d'abord s'assurer que
                     personne ne reçoive un service nettement pire que les autres, puis, à ce niveau
                     de qualité garanti pour tous, essayer de rapprocher chacun de ses services
