@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
     Alert,
     Box,
@@ -19,13 +19,179 @@ import {
 } from '@chakra-ui/react'
 import { parseDate } from '@internationalized/date'
 import { MdAdd, MdCheck, MdDateRange, MdDelete } from 'react-icons/md'
-import { CurrentUser, GroupEntity, RotationMode, RotationSlot, ServiceEntity } from '@domain'
+import {
+    CurrentUser,
+    GroupEntity,
+    RotationMode,
+    RotationSlot,
+    ServiceEntity,
+    ServiceId
+} from '@domain'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
 import { MembershipPanel } from './MembershipPanel'
 
-const AUTOSAVE_DELAY_MS = 600
+const AUTOSAVE_DELAY_MS = 300
+
+interface ServiceRowProps {
+    service: ServiceEntity
+    onChange: (
+        serviceId: string,
+        changes: { name?: string; description?: string; capacity?: number }
+    ) => void
+    onRemove: (serviceId: string) => void
+}
+
+// Memoized so typing in one service's field doesn't re-render every other
+// service row — without this, every keystroke anywhere on the page re-runs
+// this whole list (and the rotation slots' date pickers below).
+const ServiceRow = memo(function ServiceRow({ service, onChange, onRemove }: ServiceRowProps) {
+    return (
+        <HStack gap={3} align="flex-end" borderWidth="1px" borderRadius="md" p={3} flexWrap="wrap">
+            <Field.Root flex="2" minW="150px">
+                <Field.Label>Nom</Field.Label>
+                <Input
+                    value={service.name}
+                    onChange={event => onChange(service.id.value, { name: event.target.value })}
+                />
+            </Field.Root>
+            <Field.Root flex="2" minW="150px">
+                <Field.Label>Description</Field.Label>
+                <Input
+                    value={service.description}
+                    onChange={event =>
+                        onChange(service.id.value, { description: event.target.value })
+                    }
+                />
+            </Field.Root>
+            <Field.Root flex="1" minW="100px">
+                <Field.Label>Places</Field.Label>
+                <NumberInput.Root
+                    value={String(service.capacity)}
+                    onValueChange={details =>
+                        onChange(service.id.value, { capacity: Number(details.value) })
+                    }
+                    min={1}
+                >
+                    <NumberInput.Input />
+                    <NumberInput.Control />
+                </NumberInput.Root>
+            </Field.Root>
+            <IconButton
+                aria-label="Supprimer"
+                size="sm"
+                variant="ghost"
+                colorPalette="red"
+                onClick={() => onRemove(service.id.value)}
+            >
+                <MdDelete />
+            </IconButton>
+        </HStack>
+    )
+})
+
+interface RotationSlotRowProps {
+    index: number
+    slot: RotationSlot
+    rotationMode: RotationMode
+    onChange: (index: number, changes: Partial<RotationSlot>) => void
+    onRemove: (index: number) => void
+}
+
+// Memoized for the same reason as ServiceRow above. The date picker's value
+// array is additionally memoized on this slot's own dates so a re-render
+// triggered by something unrelated (typing in a different row, elsewhere on
+// the page) doesn't hand it a freshly-allocated array on every keystroke.
+const RotationSlotRow = memo(function RotationSlotRow({
+    index,
+    slot,
+    rotationMode,
+    onChange,
+    onRemove
+}: RotationSlotRowProps) {
+    const dateValue = useMemo(
+        () =>
+            [slot.startDate, slot.endDate]
+                .filter((value): value is string => value !== null)
+                .map(value => parseDate(value)),
+        [slot.startDate, slot.endDate]
+    )
+
+    return (
+        <HStack gap={3} align="flex-end" borderWidth="1px" borderRadius="md" p={3} flexWrap="wrap">
+            <Text minW="70px" fontSize="sm" fontWeight="medium">
+                #{index + 1}
+            </Text>
+            {rotationMode === 'name' ? (
+                <Field.Root flex="1" minW="150px">
+                    <Field.Label>Nom</Field.Label>
+                    <Input
+                        value={slot.name ?? ''}
+                        placeholder={`Rotation ${index + 1}`}
+                        onChange={event => onChange(index, { name: event.target.value })}
+                    />
+                </Field.Root>
+            ) : (
+                <DatePicker.Root
+                    flex="1"
+                    minW="220px"
+                    locale="fr-FR"
+                    selectionMode="range"
+                    value={dateValue}
+                    onValueChange={details =>
+                        // details.value are CalendarDate objects — .toString()
+                        // is ISO 8601, unlike valueAsString, which is locale-
+                        // formatted display text (e.g. "07/22/2026" for
+                        // en-US) and isn't valid input for parseDate above.
+                        onChange(index, {
+                            startDate: details.value[0]?.toString() ?? null,
+                            endDate: details.value[1]?.toString() ?? null
+                        })
+                    }
+                >
+                    <DatePicker.Label>Période</DatePicker.Label>
+                    <DatePicker.Control>
+                        <DatePicker.Input index={0} />
+                        <DatePicker.Input index={1} />
+                        <DatePicker.IndicatorGroup>
+                            <DatePicker.Trigger>
+                                <MdDateRange />
+                            </DatePicker.Trigger>
+                        </DatePicker.IndicatorGroup>
+                    </DatePicker.Control>
+                    <Portal>
+                        <DatePicker.Positioner>
+                            <DatePicker.Content>
+                                <DatePicker.View view="day">
+                                    <DatePicker.Header />
+                                    <DatePicker.DayTable />
+                                </DatePicker.View>
+                                <DatePicker.View view="month">
+                                    <DatePicker.Header />
+                                    <DatePicker.MonthTable />
+                                </DatePicker.View>
+                                <DatePicker.View view="year">
+                                    <DatePicker.Header />
+                                    <DatePicker.YearTable />
+                                </DatePicker.View>
+                            </DatePicker.Content>
+                        </DatePicker.Positioner>
+                    </Portal>
+                </DatePicker.Root>
+            )}
+            <IconButton
+                aria-label="Supprimer"
+                size="sm"
+                variant="ghost"
+                colorPalette="red"
+                onClick={() => onRemove(index)}
+            >
+                <MdDelete />
+            </IconButton>
+        </HStack>
+    )
+})
 
 interface DraftAdminViewProps {
     group: GroupEntity
@@ -74,7 +240,9 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
     const servicesShortfall =
         !allowRepeatedServices && rotationSlots.length > 0 && services.length < rotationSlots.length
 
-    async function run(action: () => Promise<unknown>) {
+    // Stable identity — plugged into the useCallback-wrapped mutators below
+    // so ServiceRow/RotationSlotRow's memoization actually holds up.
+    const run = useCallback(async (action: () => Promise<unknown>) => {
         setBusy(true)
         setError(null)
         try {
@@ -84,7 +252,7 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
         } finally {
             setBusy(false)
         }
-    }
+    }, [])
 
     // Debounced autosave for the group name — skips the initial mount, since
     // it already matches what's stored.
@@ -136,90 +304,106 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
         })
     }
 
-    async function removeService(serviceId: string) {
-        clearTimeout(serviceTimers.current[serviceId])
-        delete serviceTimers.current[serviceId]
-        setServices(previous => previous.filter(service => service.id.value !== serviceId))
-        await run(async () => {
-            const result = await removeServiceUseCase.execute({
-                groupId: group.id,
-                serviceId: services.find(service => service.id.value === serviceId)!.id
-            })
-            setServices(result.group.getServices())
-        })
-    }
-
-    function changeService(
-        serviceId: string,
-        changes: { name?: string; description?: string; capacity?: number }
-    ) {
-        // Ignore a transiently invalid capacity (e.g. clearing the field to
-        // retype it) rather than throwing out of a state updater.
-        if (changes.capacity !== undefined && !(changes.capacity >= 1)) {
-            return
-        }
-
-        setServices(previous => {
-            const updated = previous.map(service =>
-                service.id.value === serviceId
-                    ? service.update(changes.name, changes.description, changes.capacity)
-                    : service
-            )
-            const service = updated.find(s => s.id.value === serviceId) as ServiceEntity
-
+    const removeService = useCallback(
+        async (serviceId: string) => {
             clearTimeout(serviceTimers.current[serviceId])
-            serviceTimers.current[serviceId] = setTimeout(() => {
-                run(async () => {
-                    const result = await updateServiceUseCase.execute({
-                        groupId: group.id,
-                        serviceId: service.id,
-                        name: service.name,
-                        description: service.description,
-                        capacity: service.capacity
-                    })
-                    setServices(result.group.getServices())
+            delete serviceTimers.current[serviceId]
+            setServices(previous => previous.filter(service => service.id.value !== serviceId))
+            await run(async () => {
+                const result = await removeServiceUseCase.execute({
+                    groupId: group.id,
+                    serviceId: ServiceId.from(serviceId)
                 })
-            }, AUTOSAVE_DELAY_MS)
+                setServices(result.group.getServices())
+            })
+        },
+        [group.id, removeServiceUseCase, run]
+    )
 
-            return updated
-        })
-    }
+    const changeService = useCallback(
+        (
+            serviceId: string,
+            changes: { name?: string; description?: string; capacity?: number }
+        ) => {
+            // Ignore a transiently invalid capacity (e.g. clearing the field to
+            // retype it) rather than throwing out of a state updater.
+            if (changes.capacity !== undefined && !(changes.capacity >= 1)) {
+                return
+            }
+
+            setServices(previous => {
+                const updated = previous.map(service =>
+                    service.id.value === serviceId
+                        ? service.update(changes.name, changes.description, changes.capacity)
+                        : service
+                )
+                const service = updated.find(s => s.id.value === serviceId) as ServiceEntity
+
+                clearTimeout(serviceTimers.current[serviceId])
+                serviceTimers.current[serviceId] = setTimeout(() => {
+                    run(async () => {
+                        const result = await updateServiceUseCase.execute({
+                            groupId: group.id,
+                            serviceId: service.id,
+                            name: service.name,
+                            description: service.description,
+                            capacity: service.capacity
+                        })
+                        setServices(result.group.getServices())
+                    })
+                }, AUTOSAVE_DELAY_MS)
+
+                return updated
+            })
+        },
+        [group.id, updateServiceUseCase, run]
+    )
 
     async function addRotation() {
         setRotationSlots(previous => [...previous, { name: null, startDate: null, endDate: null }])
         await run(() => addRotationSlotUseCase.execute({ groupId: group.id }))
     }
 
-    async function removeRotation(index: number) {
-        clearTimeout(rotationSlotTimers.current[index])
-        delete rotationSlotTimers.current[index]
-        setRotationSlots(previous => previous.filter((_, i) => i !== index))
-        await run(() => removeRotationSlotUseCase.execute({ groupId: group.id, index }))
-    }
+    const removeRotation = useCallback(
+        async (index: number) => {
+            // Removing a slot shifts every later slot down one position, so
+            // any pending timer keyed by its old index would otherwise fire
+            // after the shift and write its slot's data under the wrong (or
+            // no longer existing) index — clear all of them, not just this one.
+            Object.values(rotationSlotTimers.current).forEach(clearTimeout)
+            rotationSlotTimers.current = {}
+            setRotationSlots(previous => previous.filter((_, i) => i !== index))
+            await run(() => removeRotationSlotUseCase.execute({ groupId: group.id, index }))
+        },
+        [group.id, removeRotationSlotUseCase, run]
+    )
 
-    function changeRotationSlot(index: number, changes: Partial<RotationSlot>) {
-        setRotationSlots(previous => {
-            const updated = previous.map((slot, i) =>
-                i === index ? { ...slot, ...changes } : slot
-            )
-            const slot = updated[index]
-
-            clearTimeout(rotationSlotTimers.current[index])
-            rotationSlotTimers.current[index] = setTimeout(() => {
-                run(() =>
-                    updateRotationSlotUseCase.execute({
-                        groupId: group.id,
-                        index,
-                        name: slot.name,
-                        startDate: slot.startDate,
-                        endDate: slot.endDate
-                    })
+    const changeRotationSlot = useCallback(
+        (index: number, changes: Partial<RotationSlot>) => {
+            setRotationSlots(previous => {
+                const updated = previous.map((slot, i) =>
+                    i === index ? { ...slot, ...changes } : slot
                 )
-            }, AUTOSAVE_DELAY_MS)
+                const slot = updated[index]
 
-            return updated
-        })
-    }
+                clearTimeout(rotationSlotTimers.current[index])
+                rotationSlotTimers.current[index] = setTimeout(() => {
+                    run(() =>
+                        updateRotationSlotUseCase.execute({
+                            groupId: group.id,
+                            index,
+                            name: slot.name,
+                            startDate: slot.startDate,
+                            endDate: slot.endDate
+                        })
+                    )
+                }, AUTOSAVE_DELAY_MS)
+
+                return updated
+            })
+        },
+        [group.id, updateRotationSlotUseCase, run]
+    )
 
     async function changeRotationMode(mode: RotationMode) {
         await run(() => setRotationModeUseCase.execute({ groupId: group.id, mode }))
@@ -374,89 +558,14 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                 </HStack>
                 <VStack gap={2} align="stretch" mb={4}>
                     {rotationSlots.map((slot, index) => (
-                        <HStack
+                        <RotationSlotRow
                             key={index}
-                            gap={3}
-                            align="flex-end"
-                            borderWidth="1px"
-                            borderRadius="md"
-                            p={3}
-                            flexWrap="wrap"
-                        >
-                            <Text minW="70px" fontSize="sm" fontWeight="medium">
-                                #{index + 1}
-                            </Text>
-                            {group.rotationMode === 'name' ? (
-                                <Field.Root flex="1" minW="150px">
-                                    <Field.Label>Nom</Field.Label>
-                                    <Input
-                                        value={slot.name ?? ''}
-                                        placeholder={`Rotation ${index + 1}`}
-                                        onChange={event =>
-                                            changeRotationSlot(index, { name: event.target.value })
-                                        }
-                                    />
-                                </Field.Root>
-                            ) : (
-                                <DatePicker.Root
-                                    flex="1"
-                                    minW="220px"
-                                    locale="fr-FR"
-                                    selectionMode="range"
-                                    value={[slot.startDate, slot.endDate]
-                                        .filter((value): value is string => value !== null)
-                                        .map(value => parseDate(value))}
-                                    onValueChange={details =>
-                                        // details.value are CalendarDate objects — .toString()
-                                        // is ISO 8601, unlike valueAsString, which is locale-
-                                        // formatted display text (e.g. "07/22/2026" for
-                                        // en-US) and isn't valid input for parseDate above.
-                                        changeRotationSlot(index, {
-                                            startDate: details.value[0]?.toString() ?? null,
-                                            endDate: details.value[1]?.toString() ?? null
-                                        })
-                                    }
-                                >
-                                    <DatePicker.Label>Période</DatePicker.Label>
-                                    <DatePicker.Control>
-                                        <DatePicker.Input index={0} />
-                                        <DatePicker.Input index={1} />
-                                        <DatePicker.IndicatorGroup>
-                                            <DatePicker.Trigger>
-                                                <MdDateRange />
-                                            </DatePicker.Trigger>
-                                        </DatePicker.IndicatorGroup>
-                                    </DatePicker.Control>
-                                    <Portal>
-                                        <DatePicker.Positioner>
-                                            <DatePicker.Content>
-                                                <DatePicker.View view="day">
-                                                    <DatePicker.Header />
-                                                    <DatePicker.DayTable />
-                                                </DatePicker.View>
-                                                <DatePicker.View view="month">
-                                                    <DatePicker.Header />
-                                                    <DatePicker.MonthTable />
-                                                </DatePicker.View>
-                                                <DatePicker.View view="year">
-                                                    <DatePicker.Header />
-                                                    <DatePicker.YearTable />
-                                                </DatePicker.View>
-                                            </DatePicker.Content>
-                                        </DatePicker.Positioner>
-                                    </Portal>
-                                </DatePicker.Root>
-                            )}
-                            <IconButton
-                                aria-label="Supprimer"
-                                size="sm"
-                                variant="ghost"
-                                colorPalette="red"
-                                onClick={() => removeRotation(index)}
-                            >
-                                <MdDelete />
-                            </IconButton>
-                        </HStack>
+                            index={index}
+                            slot={slot}
+                            rotationMode={group.rotationMode}
+                            onChange={changeRotationSlot}
+                            onRemove={removeRotation}
+                        />
                     ))}
                     {rotationSlots.length === 0 && (
                         <Text colorPalette="gray">Aucune rotation pour l'instant.</Text>
@@ -479,62 +588,12 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                 </HStack>
                 <VStack gap={2} align="stretch" mb={4}>
                     {services.map(service => (
-                        <HStack
+                        <ServiceRow
                             key={service.id.value}
-                            gap={3}
-                            align="flex-end"
-                            borderWidth="1px"
-                            borderRadius="md"
-                            p={3}
-                            flexWrap="wrap"
-                        >
-                            <Field.Root flex="2" minW="150px">
-                                <Field.Label>Nom</Field.Label>
-                                <Input
-                                    value={service.name}
-                                    onChange={event =>
-                                        changeService(service.id.value, {
-                                            name: event.target.value
-                                        })
-                                    }
-                                />
-                            </Field.Root>
-                            <Field.Root flex="2" minW="150px">
-                                <Field.Label>Description</Field.Label>
-                                <Input
-                                    value={service.description}
-                                    onChange={event =>
-                                        changeService(service.id.value, {
-                                            description: event.target.value
-                                        })
-                                    }
-                                />
-                            </Field.Root>
-                            <Field.Root flex="1" minW="100px">
-                                <Field.Label>Places</Field.Label>
-                                <NumberInput.Root
-                                    value={String(service.capacity)}
-                                    onValueChange={details =>
-                                        changeService(service.id.value, {
-                                            capacity: Number(details.value)
-                                        })
-                                    }
-                                    min={1}
-                                >
-                                    <NumberInput.Input />
-                                    <NumberInput.Control />
-                                </NumberInput.Root>
-                            </Field.Root>
-                            <IconButton
-                                aria-label="Supprimer"
-                                size="sm"
-                                variant="ghost"
-                                colorPalette="red"
-                                onClick={() => removeService(service.id.value)}
-                            >
-                                <MdDelete />
-                            </IconButton>
-                        </HStack>
+                            service={service}
+                            onChange={changeService}
+                            onRemove={removeService}
+                        />
                     ))}
                     {services.length === 0 && (
                         <Text colorPalette="gray">Aucun service pour l'instant.</Text>
