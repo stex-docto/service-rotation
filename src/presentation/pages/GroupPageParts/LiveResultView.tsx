@@ -1,10 +1,11 @@
 import { Box, Heading, Separator, Table, Text, VStack } from '@chakra-ui/react'
-import { Grade, GroupEntity, RotationSlot } from '@domain'
+import { CurrentUser, Grade, GroupEntity, RotationSlot } from '@domain'
 import { ComputeResultResult } from '@application'
 
 interface LiveResultViewProps {
     group: GroupEntity
     computeResult: ComputeResultResult
+    currentUser: CurrentUser
 }
 
 // Formats an ISO 'YYYY-MM-DD' string as 'DD/MM/YYYY' without going through
@@ -44,7 +45,7 @@ function formatRotationHeader(
 // stored document (see README's security model: there is no canonical
 // "final" result any more). If includedCount < totalMembers, this is
 // provisional and will change as the remaining members vote.
-export function LiveResultView({ group, computeResult }: LiveResultViewProps) {
+export function LiveResultView({ group, computeResult, currentUser }: LiveResultViewProps) {
     const { result, votes, totalMembers } = computeResult
 
     const membersById = new Map(group.getMembers().map(member => [member.userId.value, member]))
@@ -89,7 +90,14 @@ export function LiveResultView({ group, computeResult }: LiveResultViewProps) {
                     </Table.Header>
                     <Table.Body>
                         {result.assignments.map(assignment => (
-                            <Table.Row key={assignment.userId.value}>
+                            <Table.Row
+                                key={assignment.userId.value}
+                                bg={
+                                    assignment.userId.equals(currentUser.id)
+                                        ? { base: 'blue.50', _dark: 'blue.950' }
+                                        : undefined
+                                }
+                            >
                                 <Table.Cell fontWeight="medium">
                                     {membersById.get(assignment.userId.value)?.displayName ??
                                         assignment.userId.value}

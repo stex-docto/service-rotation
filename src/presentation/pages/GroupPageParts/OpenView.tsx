@@ -143,7 +143,13 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
                 </Box>
             )}
 
-            {computeResult && <LiveResultView group={group} computeResult={computeResult} />}
+            {computeResult && (
+                <LiveResultView
+                    group={group}
+                    computeResult={computeResult}
+                    currentUser={currentUser}
+                />
+            )}
         </VStack>
     )
 }
