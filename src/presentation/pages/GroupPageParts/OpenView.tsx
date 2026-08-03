@@ -34,18 +34,13 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
 
     const [error, setError] = useState<string | null>(null)
 
-    function refreshMyVote() {
+    useEffect(() => {
+        if (!isMember) return
         setLoadingVote(true)
-        return getMyVoteUseCase
+        getMyVoteUseCase
             .execute({ groupId: group.id })
             .then(result => setMyVote(result.vote))
             .finally(() => setLoadingVote(false))
-    }
-
-    useEffect(() => {
-        if (!isMember) return
-        refreshMyVote()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isMember, group.id, getMyVoteUseCase])
 
     useEffect(() => {
@@ -133,7 +128,11 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
                         </Box>
                     )
                 ) : (
-                    <GradeSheetForm group={group} existingVote={myVote} onChanged={refreshMyVote} />
+                    // setMyVote directly from the save/lock response rather than
+                    // refetching through loadingVote — that would flash the
+                    // full-screen LoadingScreen (unmounting this form) on every
+                    // autosave.
+                    <GradeSheetForm group={group} existingVote={myVote} onChanged={setMyVote} />
                 ))}
 
             {myVote?.locked && !computeResult && (

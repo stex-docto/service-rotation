@@ -18,7 +18,7 @@ const AUTOSAVE_DELAY_MS = 600
 interface GradeSheetFormProps {
     group: GroupEntity
     existingVote: VoteEntity | null
-    onChanged: () => void
+    onChanged: (vote: VoteEntity) => void
 }
 
 // Freely re-editable (grades autosave, debounced, as you change them) until
@@ -64,9 +64,9 @@ export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFor
         const timeout = setTimeout(() => {
             saveVoteDraftUseCase
                 .execute({ groupId: group.id, grades })
-                .then(() => {
+                .then(result => {
                     setSaveState('saved')
-                    onChanged()
+                    onChanged(result.vote)
                 })
                 .catch(err => {
                     setError(errorMessageFrom(err))
@@ -82,8 +82,8 @@ export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFor
         setLocking(true)
         setError(null)
         try {
-            await lockVoteUseCase.execute({ groupId: group.id })
-            onChanged()
+            const result = await lockVoteUseCase.execute({ groupId: group.id })
+            onChanged(result.vote)
         } catch (err) {
             setError(errorMessageFrom(err))
         } finally {
