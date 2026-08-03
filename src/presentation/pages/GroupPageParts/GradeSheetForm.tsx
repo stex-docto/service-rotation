@@ -5,12 +5,13 @@ import { GradeLevel, GroupEntity, VoteEntity } from '@domain'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
+import { GRADE_COLOR_PALETTE, gradeBg } from '@presentation/utils/gradeColors'
 
 const GRADE_OPTIONS = [
-    { level: GradeLevel.Excellent, label: 'Excellent', icon: FaGrinStars, colorPalette: 'green' },
-    { level: GradeLevel.Bien, label: 'Bien', icon: FaSmile, colorPalette: 'blue' },
-    { level: GradeLevel.Indifferent, label: 'Indifférent', icon: FaMeh, colorPalette: 'gray' },
-    { level: GradeLevel.Passable, label: 'Passable', icon: FaThumbsDown, colorPalette: 'red' }
+    { level: GradeLevel.Excellent, label: 'Excellent', icon: FaGrinStars },
+    { level: GradeLevel.Bien, label: 'Bien', icon: FaSmile },
+    { level: GradeLevel.Indifferent, label: 'Indifférent', icon: FaMeh },
+    { level: GradeLevel.Passable, label: 'Passable', icon: FaThumbsDown }
 ]
 
 const AUTOSAVE_DELAY_MS = 600
@@ -103,58 +104,63 @@ export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFor
             </Box>
 
             <VStack gap={3} align="stretch">
-                {services.map(service => (
-                    <HStack
-                        key={service.id.value}
-                        justify="space-between"
-                        borderWidth="1px"
-                        borderRadius="md"
-                        p={3}
-                        gap={4}
-                        flexWrap="wrap"
-                    >
-                        <Box>
-                            <Text fontWeight="medium">{service.name}</Text>
-                            {service.description && (
-                                <Text fontSize="sm" colorPalette="gray">
-                                    {service.description}
-                                </Text>
-                            )}
-                        </Box>
-                        <HStack gap={1} flexShrink={0}>
-                            {GRADE_OPTIONS.map(option => {
-                                const Icon = option.icon
-                                const selected = grades.get(service.id.value) === option.level
-                                // The "gray" colorPalette's solid variant resolves to a
-                                // near-black background (Chakra's neutral-emphasis token) —
-                                // override it so the Indifférent choice reads as grey.
-                                const graySelectedOverride =
-                                    selected && option.colorPalette === 'gray'
-                                        ? {
-                                              bg: 'gray.400',
-                                              borderColor: 'gray.400',
-                                              color: 'white'
-                                          }
-                                        : {}
-                                return (
-                                    <Button
-                                        key={option.level}
-                                        size="sm"
-                                        variant={selected ? 'solid' : 'outline'}
-                                        colorPalette={selected ? option.colorPalette : 'gray'}
-                                        {...graySelectedOverride}
-                                        title={option.label}
-                                        aria-label={option.label}
-                                        aria-pressed={selected}
-                                        onClick={() => setGrade(service.id.value, option.level)}
-                                    >
-                                        <Icon />
-                                    </Button>
-                                )
-                            })}
+                {services.map(service => {
+                    const currentLevel = grades.get(service.id.value)
+                    return (
+                        <HStack
+                            key={service.id.value}
+                            justify="space-between"
+                            borderWidth="1px"
+                            borderRadius="md"
+                            p={3}
+                            gap={4}
+                            flexWrap="wrap"
+                            bg={currentLevel !== undefined ? gradeBg(currentLevel) : undefined}
+                        >
+                            <Box>
+                                <Text fontWeight="medium">{service.name}</Text>
+                                {service.description && (
+                                    <Text fontSize="sm" colorPalette="gray">
+                                        {service.description}
+                                    </Text>
+                                )}
+                            </Box>
+                            <HStack gap={1} flexShrink={0}>
+                                {GRADE_OPTIONS.map(option => {
+                                    const Icon = option.icon
+                                    const selected = currentLevel === option.level
+                                    const colorPalette = GRADE_COLOR_PALETTE[option.level]
+                                    // The "gray" colorPalette's solid variant resolves to a
+                                    // near-black background (Chakra's neutral-emphasis token) —
+                                    // override it so the Indifférent choice reads as grey.
+                                    const graySelectedOverride =
+                                        selected && colorPalette === 'gray'
+                                            ? {
+                                                  bg: 'gray.400',
+                                                  borderColor: 'gray.400',
+                                                  color: 'white'
+                                              }
+                                            : {}
+                                    return (
+                                        <Button
+                                            key={option.level}
+                                            size="sm"
+                                            variant={selected ? 'solid' : 'outline'}
+                                            colorPalette={selected ? colorPalette : 'gray'}
+                                            {...graySelectedOverride}
+                                            title={option.label}
+                                            aria-label={option.label}
+                                            aria-pressed={selected}
+                                            onClick={() => setGrade(service.id.value, option.level)}
+                                        >
+                                            <Icon />
+                                        </Button>
+                                    )
+                                })}
+                            </HStack>
                         </HStack>
-                    </HStack>
-                ))}
+                    )
+                })}
             </VStack>
 
             <ErrorMessage message={error} />

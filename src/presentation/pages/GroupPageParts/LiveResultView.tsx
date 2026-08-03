@@ -1,6 +1,7 @@
 import { Box, Heading, Separator, Table, Text, VStack } from '@chakra-ui/react'
 import { CurrentUser, Grade, GroupEntity, RotationSlot } from '@domain'
 import { ComputeResultResult } from '@application'
+import { gradeBg } from '@presentation/utils/gradeColors'
 
 interface LiveResultViewProps {
     group: GroupEntity
@@ -50,6 +51,7 @@ export function LiveResultView({ group, computeResult, currentUser }: LiveResult
 
     const membersById = new Map(group.getMembers().map(member => [member.userId.value, member]))
     const servicesById = new Map(group.getServices().map(service => [service.id.value, service]))
+    const votesByUserId = new Map(votes.map(vote => [vote.userId.value, vote]))
     const rotationHeaders = Array.from({ length: group.rotations }, (_, i) =>
         formatRotationHeader(group.rotationSlots[i], group.rotationMode, i)
     )
@@ -89,26 +91,31 @@ export function LiveResultView({ group, computeResult, currentUser }: LiveResult
                         </Table.Row>
                     </Table.Header>
                     <Table.Body>
-                        {result.assignments.map(assignment => (
-                            <Table.Row
-                                key={assignment.userId.value}
-                                bg={
-                                    assignment.userId.equals(currentUser.id)
-                                        ? { base: 'blue.50', _dark: 'blue.950' }
-                                        : undefined
-                                }
-                            >
-                                <Table.Cell fontWeight="medium">
-                                    {membersById.get(assignment.userId.value)?.displayName ??
-                                        assignment.userId.value}
-                                </Table.Cell>
-                                {assignment.rotationServiceIds.map((serviceId, index) => (
-                                    <Table.Cell key={index}>
-                                        {servicesById.get(serviceId.value)?.name ?? serviceId.value}
+                        {result.assignments.map(assignment => {
+                            const isMe = assignment.userId.equals(currentUser.id)
+                            const vote = votesByUserId.get(assignment.userId.value)
+                            return (
+                                <Table.Row key={assignment.userId.value}>
+                                    <Table.Cell fontWeight={isMe ? 'bold' : 'medium'}>
+                                        {membersById.get(assignment.userId.value)?.displayName ??
+                                            assignment.userId.value}
                                     </Table.Cell>
-                                ))}
-                            </Table.Row>
-                        ))}
+                                    {assignment.rotationServiceIds.map((serviceId, index) => {
+                                        const grade = vote?.gradeFor(serviceId)
+                                        return (
+                                            <Table.Cell
+                                                key={index}
+                                                fontWeight={isMe ? 'bold' : undefined}
+                                                bg={grade ? gradeBg(grade.level) : undefined}
+                                            >
+                                                {servicesById.get(serviceId.value)?.name ??
+                                                    serviceId.value}
+                                            </Table.Cell>
+                                        )
+                                    })}
+                                </Table.Row>
+                            )
+                        })}
                     </Table.Body>
                 </Table.Root>
             </Box>
@@ -184,7 +191,10 @@ export function LiveResultView({ group, computeResult, currentUser }: LiveResult
                                 {group.getServices().map(service => {
                                     const grade = vote.gradeFor(service.id)
                                     return (
-                                        <Table.Cell key={service.id.value}>
+                                        <Table.Cell
+                                            key={service.id.value}
+                                            bg={grade ? gradeBg(grade.level) : undefined}
+                                        >
                                             {grade ? grade.label : '—'}
                                         </Table.Cell>
                                     )
