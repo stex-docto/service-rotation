@@ -242,11 +242,20 @@ service cloud.firestore {
         )
       );
 
-      // Only a draft with no members yet can be deleted.
+      // Only a draft nobody but the creator has joined can be deleted. The
+      // creator is always a member from creation on (see CreateGroupUseCase),
+      // so "no members yet" is never true any more — the real bar is "no
+      // OTHER member has joined", i.e. at most the creator's own entry.
       allow delete: if isSignedIn()
         && resource.data.status == 'draft'
-        && resource.data.members.size() == 0
-        && request.auth.uid == resource.data.createdBy;
+        && request.auth.uid == resource.data.createdBy
+        && (
+          resource.data.members.size() == 0
+          || (
+            resource.data.members.size() == 1
+            && resource.data.memberUids[0] == resource.data.createdBy
+          )
+        );
 
       // ---------------------------------------------------------------------
       // groups/{groupId}/votes/{uid} — the actual grades. Private to the
@@ -322,8 +331,19 @@ service cloud.firestore {
         allow update: if isSignedIn()
           && request.auth.uid == uid
           && resource.data.locked == false
-          && request.resource.data.locked == true
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['locked']);
+          && (
+            // Re-saving a still-unlocked draft — saveDraft always writes
+            // locked: false, so this is a no-op on this field. Without this
+            // branch, every save after the first (which hits `create`) is
+            // an `update` that only the locking branch below would match.
+            request.resource.data.locked == false
+            ||
+            // Locking — one-way, and this write may only flip `locked`.
+            (
+              request.resource.data.locked == true
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['locked'])
+            )
+          );
         allow delete: if false;
       }
     }

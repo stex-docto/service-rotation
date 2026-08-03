@@ -1,6 +1,18 @@
 import { FormEvent, useState } from 'react'
-import { Box, Button, Field, Heading, HStack, Input, Text, VStack } from '@chakra-ui/react'
-import { CurrentUser, GroupEntity, UserId } from '@domain'
+import {
+    Box,
+    Button,
+    Checkbox,
+    Dialog,
+    Field,
+    Heading,
+    HStack,
+    Input,
+    Portal,
+    Text,
+    VStack
+} from '@chakra-ui/react'
+import { CurrentUser, GroupEntity, MemberEntry, UserId } from '@domain'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
@@ -45,7 +57,14 @@ export function MembershipPanel({
     const [invitePending, setInvitePending] = useState(false)
     const [banningUserId, setBanningUserId] = useState<string | null>(null)
     const [unbanningUserId, setUnbanningUserId] = useState<string | null>(null)
+    const [banTarget, setBanTarget] = useState<MemberEntry | null>(null)
+    const [banAcknowledged, setBanAcknowledged] = useState(false)
     const [error, setError] = useState<string | null>(null)
+
+    function closeBanDialog() {
+        setBanTarget(null)
+        setBanAcknowledged(false)
+    }
 
     async function join(event: FormEvent) {
         event.preventDefault()
@@ -88,7 +107,12 @@ export function MembershipPanel({
         }
     }
 
-    async function ban(userId: UserId) {
+    async function confirmBan() {
+        if (!banTarget) {
+            return
+        }
+        const userId = banTarget.userId
+        closeBanDialog()
         setBanningUserId(userId.value)
         setError(null)
         try {
@@ -112,44 +136,40 @@ export function MembershipPanel({
         }
     }
 
+    const rosterLocked = group.status === 'open' && !group.inviteOpen
+    // Matches Group.unban's own guard: a ban can only be undone while the
+    // roster isn't locked yet — true in draft, and forever false past that
+    // point (whether locked manually or by opening the group for voting).
+    const banIsUndoable = group.inviteOpen
+
     return (
         <VStack gap={4} align="stretch" borderWidth="1px" borderRadius="md" shadow="sm" p={4}>
-            <Heading size="sm">Membres ({members.length})</Heading>
+            <HStack justify="space-between">
+                <Heading size="sm">Membres ({members.length})</Heading>
+                {isCreator && !rosterLocked && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        colorPalette={group.inviteOpen ? 'orange' : 'blue'}
+                        onClick={toggleInvite}
+                        loading={invitePending}
+                    >
+                        {group.inviteOpen
+                            ? 'Verrouiller les membres'
+                            : 'Rouvrir aux nouveaux membres'}
+                    </Button>
+                )}
+            </HStack>
 
             <ErrorMessage message={error} />
 
             {isCreator && (
                 <>
-                    <ShareLink groupId={group.id.value} />
-
-                    <Box>
-                        {group.status === 'open' && !group.inviteOpen ? (
-                            <Text fontSize="xs" colorPalette="gray">
-                                Les membres sont verrouillés définitivement depuis l'activation de
-                                la notation — pour l'équité, plus personne ne peut rejoindre
-                                désormais.
-                            </Text>
-                        ) : (
-                            <>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    colorPalette={group.inviteOpen ? 'orange' : 'blue'}
-                                    onClick={toggleInvite}
-                                    loading={invitePending}
-                                >
-                                    {group.inviteOpen
-                                        ? 'Verrouiller les membres'
-                                        : 'Rouvrir aux nouveaux membres'}
-                                </Button>
-                                <Text fontSize="xs" colorPalette="gray" mt={2}>
-                                    {group.inviteOpen
-                                        ? "Tant que c'est ouvert, quiconque a le lien peut rejoindre le groupe."
-                                        : 'Plus personne ne peut rejoindre le groupe avec ce lien.'}
-                                </Text>
-                            </>
-                        )}
-                    </Box>
+                    <ShareLink
+                        groupId={group.id.value}
+                        inviteOpen={group.inviteOpen}
+                        rosterLocked={rosterLocked}
+                    />
 
                     {bannedMembers.length > 0 && (
                         <Box>
@@ -182,22 +202,37 @@ export function MembershipPanel({
 
             {members.length > 0 && (
                 <VStack align="stretch" gap={1}>
-                    {members.map(member => (
-                        <HStack key={member.userId.value} justify="space-between">
-                            <Text fontSize="sm">{member.displayName}</Text>
-                            {isCreator && !member.userId.equals(currentUser.id) && (
-                                <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    colorPalette="red"
-                                    loading={banningUserId === member.userId.value}
-                                    onClick={() => ban(member.userId)}
-                                >
-                                    Bannir
-                                </Button>
-                            )}
-                        </HStack>
-                    ))}
+                    {members.map(member => {
+                        const isSelf = member.userId.equals(currentUser.id)
+                        return (
+                            <HStack key={member.userId.value} justify="space-between">
+                                <Text fontSize="sm">{member.displayName}</Text>
+                                {isSelf
+                                    ? !voteLocked && (
+                                          <Button
+                                              size="xs"
+                                              variant="ghost"
+                                              colorPalette="orange"
+                                              loading={leaving}
+                                              onClick={leave}
+                                          >
+                                              Quitter
+                                          </Button>
+                                      )
+                                    : isCreator && (
+                                          <Button
+                                              size="xs"
+                                              variant="ghost"
+                                              colorPalette="red"
+                                              loading={banningUserId === member.userId.value}
+                                              onClick={() => setBanTarget(member)}
+                                          >
+                                              Bannir
+                                          </Button>
+                                      )}
+                            </HStack>
+                        )
+                    })}
                 </VStack>
             )}
 
@@ -228,31 +263,76 @@ export function MembershipPanel({
                 ))}
 
             {isMember && (
-                <Box>
-                    {voteLocked ? (
-                        <Text fontSize="sm" colorPalette="gray">
-                            Tu ne peux plus quitter ce groupe : tes notes sont verrouillées.
-                        </Text>
-                    ) : (
-                        <>
-                            <Text fontSize="sm" colorPalette="gray">
-                                Tu peux quitter ce groupe tant que tes notes ne sont pas
-                                verrouillées.
-                            </Text>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                colorPalette="red"
-                                onClick={leave}
-                                loading={leaving}
-                                mt={2}
-                            >
-                                Quitter le groupe
-                            </Button>
-                        </>
-                    )}
-                </Box>
+                <Text fontSize="xs" colorPalette={voteLocked ? 'gray' : 'orange'}>
+                    {voteLocked
+                        ? 'Tu ne peux plus quitter ce groupe : tes notes sont verrouillées.'
+                        : 'Tu ne veux pas participer au tirage ? Utilise « Quitter » à côté de ton nom ci-dessus, tant que tes notes ne sont pas verrouillées.'}
+                </Text>
             )}
+
+            <Dialog.Root
+                open={banTarget !== null}
+                onOpenChange={details => !details.open && closeBanDialog()}
+                role="alertdialog"
+            >
+                <Portal>
+                    <Dialog.Backdrop />
+                    <Dialog.Positioner>
+                        <Dialog.Content>
+                            <Dialog.Header>
+                                <Dialog.Title>Bannir {banTarget?.displayName} ?</Dialog.Title>
+                            </Dialog.Header>
+                            <Dialog.Body>
+                                <VStack align="stretch" gap={3}>
+                                    <Text>
+                                        {banTarget?.displayName} sera immédiatement retiré du groupe
+                                        et ne pourra plus voter ni voir les résultats.
+                                    </Text>
+                                    <Text>
+                                        {banIsUndoable
+                                            ? "Les membres ne sont pas encore verrouillés : tu pourras annuler ce bannissement plus tard si besoin, tant que ce n'est pas le cas."
+                                            : 'Les membres sont verrouillés : ce bannissement est définitif, impossible à annuler, et cette personne ne pourra plus rejoindre avec ce lien.'}
+                                    </Text>
+                                    {group.status === 'open' && (
+                                        <Text>
+                                            Si ses notes étaient déjà verrouillées, elles seront
+                                            simplement ignorées lors du calcul du tirage.
+                                        </Text>
+                                    )}
+                                    {!banIsUndoable && (
+                                        <Checkbox.Root
+                                            checked={banAcknowledged}
+                                            onCheckedChange={details =>
+                                                setBanAcknowledged(!!details.checked)
+                                            }
+                                        >
+                                            <Checkbox.HiddenInput />
+                                            <Checkbox.Control />
+                                            <Checkbox.Label>
+                                                Je comprends que je ne peux pas annuler ce
+                                                bannissement.
+                                            </Checkbox.Label>
+                                        </Checkbox.Root>
+                                    )}
+                                </VStack>
+                            </Dialog.Body>
+                            <Dialog.Footer>
+                                <Button variant="outline" onClick={closeBanDialog}>
+                                    Annuler
+                                </Button>
+                                <Button
+                                    colorPalette={banIsUndoable ? 'orange' : 'red'}
+                                    disabled={!banIsUndoable && !banAcknowledged}
+                                    loading={banningUserId === banTarget?.userId.value}
+                                    onClick={confirmBan}
+                                >
+                                    {banIsUndoable ? 'Bannir' : 'Bannir définitivement'}
+                                </Button>
+                            </Dialog.Footer>
+                        </Dialog.Content>
+                    </Dialog.Positioner>
+                </Portal>
+            </Dialog.Root>
         </VStack>
     )
 }

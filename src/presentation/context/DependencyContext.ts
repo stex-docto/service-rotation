@@ -6,6 +6,7 @@ import {
     CloseInviteUseCase,
     ComputeResultUseCase,
     CreateGroupUseCase,
+    DeleteGroupUseCase,
     GetGroupUseCase,
     GetMyGroupsUseCase,
     GetMyVoteUseCase,
@@ -30,6 +31,7 @@ import {
 export interface DependencyContext {
     signInUseCase: SignInUseCase
     createGroupUseCase: CreateGroupUseCase
+    deleteGroupUseCase: DeleteGroupUseCase
     updateGroupSettingsUseCase: UpdateGroupSettingsUseCase
     addServiceUseCase: AddServiceUseCase
     updateServiceUseCase: UpdateServiceUseCase

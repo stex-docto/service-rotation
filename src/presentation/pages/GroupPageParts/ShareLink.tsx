@@ -3,9 +3,11 @@ import { Box, Button, HStack, Input, Text } from '@chakra-ui/react'
 
 interface ShareLinkProps {
     groupId: string
+    inviteOpen: boolean
+    rosterLocked: boolean
 }
 
-export function ShareLink({ groupId }: ShareLinkProps) {
+export function ShareLink({ groupId, inviteOpen, rosterLocked }: ShareLinkProps) {
     const [copied, setCopied] = useState(false)
     const url = `${window.location.origin}${window.location.pathname}#/group/${groupId}`
 
@@ -26,6 +28,13 @@ export function ShareLink({ groupId }: ShareLinkProps) {
                     {copied ? 'Copié !' : 'Copier'}
                 </Button>
             </HStack>
+            <Text fontSize="xs" colorPalette="gray" mt={2}>
+                {rosterLocked
+                    ? "Les membres sont verrouillés définitivement depuis l'activation de la notation — pour l'équité, plus personne ne peut rejoindre désormais."
+                    : inviteOpen
+                      ? "Tant que c'est ouvert, quiconque a le lien peut rejoindre le groupe."
+                      : 'Plus personne ne peut rejoindre le groupe avec ce lien.'}
+            </Text>
         </Box>
     )
 }

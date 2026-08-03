@@ -1,9 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
     Alert,
     Box,
     Button,
     DatePicker,
+    Dialog,
     Field,
     Heading,
     HStack,
@@ -209,11 +211,34 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
         removeRotationSlotUseCase,
         updateRotationSlotUseCase,
         setRotationModeUseCase,
-        openGroupUseCase
+        openGroupUseCase,
+        deleteGroupUseCase
     } = useDependencies()
+    const navigate = useNavigate()
 
     const [error, setError] = useState<string | null>(null)
     const [busy, setBusy] = useState(false)
+
+    // Mirrors firestore.rules' delete clause: deletable only while nobody
+    // but the creator has joined — the creator is always a member from
+    // creation on (see CreateGroupUseCase), so this is never true just
+    // because the list "looks empty".
+    const otherMembers = group.getMembers().filter(member => !member.userId.equals(currentUser.id))
+    const canDeleteGroup = otherMembers.length === 0
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+    const [deleting, setDeleting] = useState(false)
+
+    async function confirmDelete() {
+        setDeleting(true)
+        setError(null)
+        try {
+            await deleteGroupUseCase.execute({ groupId: group.id })
+            navigate('/')
+        } catch (err) {
+            setError(errorMessageFrom(err))
+            setDeleting(false)
+        }
+    }
 
     const [name, setName] = useState(group.name)
     const [nameSaveState, setNameSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -300,7 +325,17 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                 description: '',
                 capacity: 1
             })
-            setServices(result.group.getServices())
+            // Merge in only the newly created service(s), rather than
+            // replacing the whole array — a full replace from this response
+            // would clobber a concurrent, still-unsaved edit typed into
+            // another row while this request was in flight.
+            setServices(previous => {
+                const knownIds = new Set(previous.map(service => service.id.value))
+                const added = result.group
+                    .getServices()
+                    .filter(service => !knownIds.has(service.id.value))
+                return [...previous, ...added]
+            })
         })
     }
 
@@ -309,13 +344,16 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
             clearTimeout(serviceTimers.current[serviceId])
             delete serviceTimers.current[serviceId]
             setServices(previous => previous.filter(service => service.id.value !== serviceId))
-            await run(async () => {
-                const result = await removeServiceUseCase.execute({
+            // No resync after this resolves — same reason as changeService
+            // above: the optimistic filter already applied, and replacing the
+            // whole array from this response could clobber a concurrent edit
+            // to a different row still in flight.
+            await run(() =>
+                removeServiceUseCase.execute({
                     groupId: group.id,
                     serviceId: ServiceId.from(serviceId)
                 })
-                setServices(result.group.getServices())
-            })
+            )
         },
         [group.id, removeServiceUseCase, run]
     )
@@ -341,16 +379,21 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
 
                 clearTimeout(serviceTimers.current[serviceId])
                 serviceTimers.current[serviceId] = setTimeout(() => {
-                    run(async () => {
-                        const result = await updateServiceUseCase.execute({
+                    // No setServices(result...) here — same reason as
+                    // changeRotationSlot below: resyncing from the server
+                    // response would clobber a newer keystroke typed while
+                    // this save was still in flight. Local state is already
+                    // correct; ServiceEntity.update() is pure and deterministic
+                    // so there's nothing server-only to pick up.
+                    run(() =>
+                        updateServiceUseCase.execute({
                             groupId: group.id,
                             serviceId: service.id,
                             name: service.name,
                             description: service.description,
                             capacity: service.capacity
                         })
-                        setServices(result.group.getServices())
-                    })
+                    )
                 }, AUTOSAVE_DELAY_MS)
 
                 return updated
@@ -428,6 +471,12 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
             <VStack gap={8} align="stretch">
                 <Box>
                     <Heading size="lg">{group.name}</Heading>
+                </Box>
+
+                <Box borderWidth="1px" borderRadius="md" shadow="sm" p={4}>
+                    <Heading size="sm" mb={2}>
+                        Vote
+                    </Heading>
                     <Text colorPalette="gray">
                         En attente que la personne ayant créé le groupe active la notation.
                     </Text>
@@ -532,6 +581,7 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                         <HStack gap={1}>
                             <Button
                                 size="xs"
+                                colorPalette="blue"
                                 variant={group.rotationMode === 'name' ? 'solid' : 'outline'}
                                 onClick={() => changeRotationMode('name')}
                             >
@@ -539,6 +589,7 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                             </Button>
                             <Button
                                 size="xs"
+                                colorPalette="blue"
                                 variant={group.rotationMode === 'date' ? 'solid' : 'outline'}
                                 onClick={() => changeRotationMode('date')}
                             >
@@ -549,6 +600,7 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                             aria-label="Ajouter une rotation"
                             title="Ajouter une rotation"
                             size="sm"
+                            colorPalette="blue"
                             onClick={addRotation}
                             loading={busy}
                         >
@@ -580,6 +632,7 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                         aria-label="Ajouter un service"
                         title="Ajouter un service"
                         size="sm"
+                        colorPalette="blue"
                         onClick={addService}
                         loading={busy}
                     >
@@ -647,6 +700,63 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                     Activer la notation
                 </Button>
             </Box>
+
+            <Box borderWidth="1px" borderColor="red.300" borderRadius="md" shadow="sm" p={4}>
+                <Heading size="sm" mb={2}>
+                    Supprimer le groupe
+                </Heading>
+                <Text fontSize="sm" colorPalette="gray" mb={4}>
+                    {canDeleteGroup
+                        ? 'Supprime définitivement ce groupe. Possible uniquement tant que personne d’autre que toi ne l’a rejoint.'
+                        : `Impossible tant que d'autres membres (${otherMembers.length}) ont rejoint ce groupe.`}
+                </Text>
+                <Button
+                    colorPalette="red"
+                    variant="outline"
+                    onClick={() => setDeleteConfirmOpen(true)}
+                    disabled={!canDeleteGroup}
+                >
+                    Supprimer le groupe
+                </Button>
+            </Box>
+
+            <Dialog.Root
+                open={deleteConfirmOpen}
+                onOpenChange={details => setDeleteConfirmOpen(details.open)}
+                role="alertdialog"
+            >
+                <Portal>
+                    <Dialog.Backdrop />
+                    <Dialog.Positioner>
+                        <Dialog.Content>
+                            <Dialog.Header>
+                                <Dialog.Title>Supprimer « {group.name} » ?</Dialog.Title>
+                            </Dialog.Header>
+                            <Dialog.Body>
+                                <Text>
+                                    Cette action est définitive : le groupe, ses services et ses
+                                    rotations seront supprimés et ne pourront pas être récupérés.
+                                </Text>
+                            </Dialog.Body>
+                            <Dialog.Footer>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setDeleteConfirmOpen(false)}
+                                >
+                                    Annuler
+                                </Button>
+                                <Button
+                                    colorPalette="red"
+                                    loading={deleting}
+                                    onClick={confirmDelete}
+                                >
+                                    Supprimer définitivement
+                                </Button>
+                            </Dialog.Footer>
+                        </Dialog.Content>
+                    </Dialog.Positioner>
+                </Portal>
+            </Dialog.Root>
         </VStack>
     )
 }

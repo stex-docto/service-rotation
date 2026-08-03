@@ -1,5 +1,6 @@
 export * from './SignInUseCase'
 export * from './CreateGroupUseCase'
+export * from './DeleteGroupUseCase'
 export * from './UpdateGroupSettingsUseCase'
 export * from './AddServiceUseCase'
 export * from './UpdateServiceUseCase'

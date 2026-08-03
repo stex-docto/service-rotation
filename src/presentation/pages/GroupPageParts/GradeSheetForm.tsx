@@ -47,7 +47,9 @@ export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFor
     const skipNextSave = useRef(true)
 
     function setGrade(serviceId: string, level: GradeLevel) {
-        setGrades(previous => new Map(previous).set(serviceId, level))
+        setGrades(previous =>
+            previous.get(serviceId) === level ? previous : new Map(previous).set(serviceId, level)
+        )
     }
 
     // Debounced autosave: skips the initial mount (grades already match

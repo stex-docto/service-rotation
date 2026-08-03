@@ -7,6 +7,7 @@ import {
     CloseInviteUseCase,
     ComputeResultUseCase,
     CreateGroupUseCase,
+    DeleteGroupUseCase,
     GetGroupUseCase,
     GetMyGroupsUseCase,
     GetMyVoteUseCase,
@@ -52,6 +53,7 @@ function initDependencies(): DependencyContext {
 
     const signInUseCase = new SignInUseCase(userRepository)
     const createGroupUseCase = new CreateGroupUseCase(groupRepository, signInUseCase)
+    const deleteGroupUseCase = new DeleteGroupUseCase(groupRepository, signInUseCase)
     const updateGroupSettingsUseCase = new UpdateGroupSettingsUseCase(
         groupRepository,
         signInUseCase
@@ -97,6 +99,7 @@ function initDependencies(): DependencyContext {
     return {
         signInUseCase,
         createGroupUseCase,
+        deleteGroupUseCase,
         updateGroupSettingsUseCase,
         addServiceUseCase,
         updateServiceUseCase,
