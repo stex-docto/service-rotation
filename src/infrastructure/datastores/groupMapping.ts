@@ -62,6 +62,13 @@ export type FirebaseGroupDocument = {
     // predecessorGroupId. Absent on every document written before this
     // feature existed; toGroupEntity falls back to null.
     predecessorGroupId?: string | null
+    // Optional only for documents written before this setting existed —
+    // see toGroupEntity's fallback (defaults to false). Always written from
+    // here on.
+    pastShiftsEnabled?: boolean
+    // uid -> serviceId -> shift count. See Group.ts's shiftHistory. Absent
+    // on documents written before this feature existed.
+    shiftHistory?: { [uid: string]: { [serviceId: string]: number } }
 }
 
 // Shared by FirebaseGroupDatastore and FirebaseVoteDatastore (the latter
@@ -78,6 +85,11 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
             capacity: service.capacity,
             sortOrder: service.sortOrder
         }
+    }
+
+    const shiftHistory: { [uid: string]: { [serviceId: string]: number } } = {}
+    for (const [uid, counts] of group.shiftHistory) {
+        shiftHistory[uid] = Object.fromEntries(counts)
     }
 
     // Preserve member ARRAY ORDER exactly (getMembers() iterates the
@@ -108,7 +120,9 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
         bannedUids: bannedMembers.map(entry => entry.userId),
         createdBy: group.createdBy.value,
         createdDate: group.createdDate.toISOString(),
-        predecessorGroupId: group.predecessorGroupId?.value ?? null
+        predecessorGroupId: group.predecessorGroupId?.value ?? null,
+        pastShiftsEnabled: group.pastShiftsEnabled,
+        shiftHistory
     }
 }
 
@@ -167,6 +181,13 @@ export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
         bannedMembers,
         UserId.from(data.createdBy),
         new Date(data.createdDate),
-        data.predecessorGroupId ? GroupId.from(data.predecessorGroupId) : null
+        data.predecessorGroupId ? GroupId.from(data.predecessorGroupId) : null,
+        data.pastShiftsEnabled ?? false,
+        new Map(
+            Object.entries(data.shiftHistory ?? {}).map(([uid, counts]) => [
+                uid,
+                new Map(Object.entries(counts))
+            ])
+        )
     )
 }

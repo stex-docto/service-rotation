@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Button, Dialog, Heading, HStack, Portal, Text, VStack } from '@chakra-ui/react'
 import { FaGrinStars, FaMeh, FaSmile, FaThumbsDown } from 'react-icons/fa'
-import { GradeLevel, GroupEntity, VoteEntity } from '@domain'
+import { CurrentUser, GradeLevel, GroupEntity, VoteEntity } from '@domain'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
@@ -19,6 +19,7 @@ const AUTOSAVE_DELAY_MS = 600
 interface GradeSheetFormProps {
     group: GroupEntity
     existingVote: VoteEntity | null
+    currentUser: CurrentUser
     onChanged: (vote: VoteEntity) => void
 }
 
@@ -26,9 +27,18 @@ interface GradeSheetFormProps {
 // you lock the vote — a separate, deliberate, irreversible action confirmed
 // through a dialog rather than a native alert. There is no cap on any grade
 // any more: every service is assignable, nothing is a veto.
-export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFormProps) {
+export function GradeSheetForm({
+    group,
+    existingVote,
+    currentUser,
+    onChanged
+}: GradeSheetFormProps) {
     const { saveVoteDraftUseCase, lockVoteUseCase } = useDependencies()
     const services = group.getServices()
+    // Frozen at open, same as services/rotations — read-only context, never
+    // editable from here. See README's honesty argument for why this isn't
+    // a field the voter fills in themselves.
+    const myShiftHistory = group.getShiftHistoryFor(currentUser.id)
 
     const [grades, setGrades] = useState<Map<string, GradeLevel>>(() => {
         if (existingVote) {
@@ -122,6 +132,12 @@ export function GradeSheetForm({ group, existingVote, onChanged }: GradeSheetFor
                                 {service.description && (
                                     <Text fontSize="sm" colorPalette="gray">
                                         {service.description}
+                                    </Text>
+                                )}
+                                {group.pastShiftsEnabled && (
+                                    <Text fontSize="xs" colorPalette="gray">
+                                        Stages déjà faits ici :{' '}
+                                        {myShiftHistory.get(service.id.value) ?? 0}
                                     </Text>
                                 )}
                             </Box>

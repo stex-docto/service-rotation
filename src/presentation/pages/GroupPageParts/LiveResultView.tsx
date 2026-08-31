@@ -190,12 +190,21 @@ export function LiveResultView({ group, computeResult, currentUser }: LiveResult
                                 </Table.Cell>
                                 {group.getServices().map(service => {
                                     const grade = vote.gradeFor(service.id)
+                                    const shiftsAlreadyDone = group
+                                        .getShiftHistoryFor(vote.userId)
+                                        .get(service.id.value)
                                     return (
                                         <Table.Cell
                                             key={service.id.value}
                                             bg={grade ? gradeBg(grade.level) : undefined}
                                         >
                                             {grade ? grade.label : '—'}
+                                            {group.pastShiftsEnabled && (
+                                                <Text as="span" fontSize="xs" colorPalette="gray">
+                                                    {' '}
+                                                    (déjà fait : {shiftsAlreadyDone ?? 0})
+                                                </Text>
+                                            )}
                                         </Table.Cell>
                                     )
                                 })}

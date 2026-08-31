@@ -43,6 +43,17 @@ service cloud.firestore {
       function existingAllowRepeatedServices() {
         return ('allowRepeatedServices' in resource.data) ? resource.data.allowRepeatedServices : false;
       }
+      // Same tolerance, for the past-shift-history feature: pastShiftsEnabled
+      // and shiftHistory are new fields, so every write to a group document
+      // that predates this feature will otherwise look like it "changed"
+      // these keys (absent -> present) even when it doesn't intend to touch
+      // them — see existingAllowRepeatedServices above for the same shape.
+      function existingPastShiftsEnabled() {
+        return ('pastShiftsEnabled' in resource.data) ? resource.data.pastShiftsEnabled : false;
+      }
+      function existingShiftHistory() {
+        return ('shiftHistory' in resource.data) ? resource.data.shiftHistory : {};
+      }
 
       // Readable by any signed-in user who already knows its id, draft or
       // open — not gated on membership. This is deliberate, not a hole: the
@@ -87,7 +98,7 @@ service cloud.firestore {
           && request.resource.data.status == 'draft'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
                ['name', 'services', 'rotationSlots', 'rotationMode', 'allowRepeatedServices',
-                'bannedMembers', 'bannedUids']
+                'bannedMembers', 'bannedUids', 'pastShiftsEnabled', 'shiftHistory']
              )
           && request.resource.data.bannedUids == existingBannedUids()
           && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
@@ -105,11 +116,14 @@ service cloud.firestore {
           && request.resource.data.status == 'open'
           && request.resource.data.inviteOpen == false
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-               ['status', 'inviteOpen', 'allowRepeatedServices', 'bannedMembers', 'bannedUids']
+               ['status', 'inviteOpen', 'allowRepeatedServices', 'bannedMembers', 'bannedUids',
+                'pastShiftsEnabled', 'shiftHistory']
              )
           && request.resource.data.bannedUids == existingBannedUids()
           && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
           && request.resource.data.allowRepeatedServices == existingAllowRepeatedServices()
+          && request.resource.data.pastShiftsEnabled == existingPastShiftsEnabled()
+          && request.resource.data.shiftHistory == existingShiftHistory()
         )
         ||
         // (c) Self-join: exactly your own uid, added once, invite must be
@@ -127,11 +141,14 @@ service cloud.firestore {
           resource.data.inviteOpen == true
           && !(request.auth.uid in existingBannedUids())
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-               ['members', 'memberUids', 'allowRepeatedServices', 'bannedMembers', 'bannedUids']
+               ['members', 'memberUids', 'allowRepeatedServices', 'bannedMembers', 'bannedUids',
+                'pastShiftsEnabled', 'shiftHistory']
              )
           && request.resource.data.bannedUids == existingBannedUids()
           && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
           && request.resource.data.allowRepeatedServices == existingAllowRepeatedServices()
+          && request.resource.data.pastShiftsEnabled == existingPastShiftsEnabled()
+          && request.resource.data.shiftHistory == existingShiftHistory()
           && !(request.auth.uid in resource.data.memberUids)
           && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
           && request.resource.data.members == resource.data.members.concat(
@@ -150,11 +167,14 @@ service cloud.firestore {
         (
           request.auth.uid in resource.data.memberUids
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-               ['members', 'memberUids', 'allowRepeatedServices', 'bannedMembers', 'bannedUids']
+               ['members', 'memberUids', 'allowRepeatedServices', 'bannedMembers', 'bannedUids',
+                'pastShiftsEnabled', 'shiftHistory']
              )
           && request.resource.data.bannedUids == existingBannedUids()
           && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
           && request.resource.data.allowRepeatedServices == existingAllowRepeatedServices()
+          && request.resource.data.pastShiftsEnabled == existingPastShiftsEnabled()
+          && request.resource.data.shiftHistory == existingShiftHistory()
           && !(request.auth.uid in request.resource.data.memberUids)
           && request.resource.data.memberUids == resource.data.memberUids.removeAll([request.auth.uid])
           && request.resource.data.members.size() == resource.data.members.size() - 1
@@ -169,11 +189,14 @@ service cloud.firestore {
         (
           request.auth.uid == resource.data.createdBy
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-               ['inviteOpen', 'allowRepeatedServices', 'bannedMembers', 'bannedUids']
+               ['inviteOpen', 'allowRepeatedServices', 'bannedMembers', 'bannedUids',
+                'pastShiftsEnabled', 'shiftHistory']
              )
           && request.resource.data.bannedUids == existingBannedUids()
           && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
           && request.resource.data.allowRepeatedServices == existingAllowRepeatedServices()
+          && request.resource.data.pastShiftsEnabled == existingPastShiftsEnabled()
+          && request.resource.data.shiftHistory == existingShiftHistory()
           && resource.data.inviteOpen == true
           && request.resource.data.inviteOpen == false
         )
@@ -188,11 +211,14 @@ service cloud.firestore {
           resource.data.status == 'draft'
           && request.auth.uid == resource.data.createdBy
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-               ['inviteOpen', 'allowRepeatedServices', 'bannedMembers', 'bannedUids']
+               ['inviteOpen', 'allowRepeatedServices', 'bannedMembers', 'bannedUids',
+                'pastShiftsEnabled', 'shiftHistory']
              )
           && request.resource.data.bannedUids == existingBannedUids()
           && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
           && request.resource.data.allowRepeatedServices == existingAllowRepeatedServices()
+          && request.resource.data.pastShiftsEnabled == existingPastShiftsEnabled()
+          && request.resource.data.shiftHistory == existingShiftHistory()
           && resource.data.inviteOpen == false
           && request.resource.data.inviteOpen == true
         )
@@ -212,7 +238,8 @@ service cloud.firestore {
         (
           request.auth.uid == resource.data.createdBy
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-               ['members', 'memberUids', 'allowRepeatedServices', 'bannedMembers', 'bannedUids']
+               ['members', 'memberUids', 'allowRepeatedServices', 'bannedMembers', 'bannedUids',
+                'pastShiftsEnabled', 'shiftHistory']
              )
           && request.resource.data.memberUids.size() == resource.data.memberUids.size() - 1
           && request.resource.data.memberUids.removeAll(resource.data.memberUids).size() == 0
@@ -221,6 +248,8 @@ service cloud.firestore {
           && existingBannedUids().removeAll(request.resource.data.bannedUids).size() == 0
           && request.resource.data.bannedMembers.size() == existingBannedMembers().size() + 1
           && request.resource.data.allowRepeatedServices == existingAllowRepeatedServices()
+          && request.resource.data.pastShiftsEnabled == existingPastShiftsEnabled()
+          && request.resource.data.shiftHistory == existingShiftHistory()
         )
         ||
         // (g) Creator undoes a ban — a misclick undo, not a way to
@@ -233,12 +262,15 @@ service cloud.firestore {
           request.auth.uid == resource.data.createdBy
           && resource.data.inviteOpen == true
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-               ['allowRepeatedServices', 'bannedMembers', 'bannedUids']
+               ['allowRepeatedServices', 'bannedMembers', 'bannedUids',
+                'pastShiftsEnabled', 'shiftHistory']
              )
           && request.resource.data.bannedUids.size() == existingBannedUids().size() - 1
           && request.resource.data.bannedUids.removeAll(existingBannedUids()).size() == 0
           && request.resource.data.bannedMembers.size() == existingBannedMembers().size() - 1
           && request.resource.data.allowRepeatedServices == existingAllowRepeatedServices()
+          && request.resource.data.pastShiftsEnabled == existingPastShiftsEnabled()
+          && request.resource.data.shiftHistory == existingShiftHistory()
         )
       );
 

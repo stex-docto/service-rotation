@@ -58,6 +58,21 @@ export interface Group {
     // a group id can already `get` it) and drives nothing on its own — it's
     // what a future "import shift history" feature will read from.
     predecessorGroupId: GroupId | null
+    // Whether per-service "shifts already done" counts are tracked for this
+    // group. Draft-only setting, like allowRepeatedServices. Independent of
+    // predecessorGroupId — usable standalone (organizer types the numbers
+    // in) or left off on a cloned group.
+    pastShiftsEnabled: boolean
+    // uid -> serviceId -> shifts already done, before this cycle started.
+    // Organizer-owned: entered by the creator while still a draft, public to
+    // every member from the moment it's entered (this is the group
+    // document, already readable by anyone holding the link), frozen at
+    // open alongside services and rotations. Deliberately NOT self-reported
+    // by members — an unverified self-reported count would be a free,
+    // unbounded lever on top of the bounded, self-punishing grade (see
+    // README). Stale entries for a member who later left or was banned are
+    // harmless and ignored, same as an orphaned vote.
+    shiftHistory: Map<string, Map<string, number>>
 }
 
 export class GroupEntity implements Group {
@@ -74,7 +89,9 @@ export class GroupEntity implements Group {
         public readonly bannedMembers: MemberSet,
         public readonly createdBy: UserId,
         public readonly createdDate: Date,
-        public readonly predecessorGroupId: GroupId | null
+        public readonly predecessorGroupId: GroupId | null,
+        public readonly pastShiftsEnabled: boolean,
+        public readonly shiftHistory: Map<string, Map<string, number>>
     ) {}
 
     // How many rotations each member goes through — always exactly the
@@ -102,7 +119,9 @@ export class GroupEntity implements Group {
             new MemberSet(),
             createdBy,
             new Date(),
-            predecessorGroupId
+            predecessorGroupId,
+            false,
+            new Map()
         )
     }
 
@@ -112,7 +131,11 @@ export class GroupEntity implements Group {
         }
     }
 
-    updateSettings(options: { name?: string; allowRepeatedServices?: boolean }): GroupEntity {
+    updateSettings(options: {
+        name?: string
+        allowRepeatedServices?: boolean
+        pastShiftsEnabled?: boolean
+    }): GroupEntity {
         this.requireDraft('update settings')
 
         return new GroupEntity(
@@ -128,7 +151,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            options.pastShiftsEnabled ?? this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -162,7 +187,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -185,7 +212,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -208,7 +237,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -228,7 +259,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -251,7 +284,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -274,7 +309,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -296,7 +333,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -334,7 +373,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -366,7 +407,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -393,7 +436,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -420,7 +465,9 @@ export class GroupEntity implements Group {
             this.bannedMembers.add(entry),
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -451,7 +498,9 @@ export class GroupEntity implements Group {
             this.bannedMembers.remove(userId),
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -475,7 +524,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -501,7 +552,9 @@ export class GroupEntity implements Group {
             this.bannedMembers,
             this.createdBy,
             this.createdDate,
-            this.predecessorGroupId
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
         )
     }
 
@@ -515,6 +568,42 @@ export class GroupEntity implements Group {
 
     getBannedMembers(): MemberEntry[] {
         return this.bannedMembers.toArray()
+    }
+
+    getShiftHistoryFor(userId: UserId): Map<string, number> {
+        return this.shiftHistory.get(userId.value) ?? new Map()
+    }
+
+    // Replaces one member's whole row — used both for a manual organizer
+    // edit and, once proposals exist, for accepting one. Whole-row rather
+    // than per-service so a single autosave can't leave the row half
+    // updated if a caller only has a partial map.
+    setMemberShiftHistory(userId: UserId, counts: Map<string, number>): GroupEntity {
+        this.requireDraft("set a member's shift history")
+        if (!this.members.has(userId)) {
+            throw new Error('Not a member of this group')
+        }
+
+        const nextHistory = new Map(this.shiftHistory)
+        nextHistory.set(userId.value, new Map(counts))
+
+        return new GroupEntity(
+            this.id,
+            this.name,
+            this.status,
+            this.services,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            this.allowRepeatedServices,
+            this.inviteOpen,
+            this.bannedMembers,
+            this.createdBy,
+            this.createdDate,
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            nextHistory
+        )
     }
 
     isCreator(userId: UserId): boolean {
