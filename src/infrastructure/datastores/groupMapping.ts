@@ -58,6 +58,10 @@ export type FirebaseGroupDocument = {
     bannedUids?: string[]
     createdBy: string
     createdDate: string
+    // The group this one was cloned from, if any — see Group.ts's
+    // predecessorGroupId. Absent on every document written before this
+    // feature existed; toGroupEntity falls back to null.
+    predecessorGroupId?: string | null
 }
 
 // Shared by FirebaseGroupDatastore and FirebaseVoteDatastore (the latter
@@ -103,7 +107,8 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
         bannedMembers,
         bannedUids: bannedMembers.map(entry => entry.userId),
         createdBy: group.createdBy.value,
-        createdDate: group.createdDate.toISOString()
+        createdDate: group.createdDate.toISOString(),
+        predecessorGroupId: group.predecessorGroupId?.value ?? null
     }
 }
 
@@ -161,6 +166,7 @@ export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
         data.inviteOpen,
         bannedMembers,
         UserId.from(data.createdBy),
-        new Date(data.createdDate)
+        new Date(data.createdDate),
+        data.predecessorGroupId ? GroupId.from(data.predecessorGroupId) : null
     )
 }
