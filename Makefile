@@ -26,6 +26,9 @@ help: ## Prints this help
 	@grep -E '^[a-zA-Z_\-\0.0-9]+:.*?## .*$$' ${MAKEFILE_LIST} | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 
+firebase.login: ## Authenticate the firebase-tools container (persists in the firebase-tools-config volume)
+	@docker compose run --rm --workdir "/firebase" firebase-tools firebase login --no-localhost
+
 firebase.deploy.dev: ## Push firestore rules/indexes to the dev Firebase project
 	@docker compose run --rm --workdir "/firebase" firebase-tools firebase deploy -P dev
 
