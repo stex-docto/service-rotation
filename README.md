@@ -84,12 +84,22 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
    itself, whenever that's what minimises their cost — not only when there
    aren't enough distinct services to avoid it: a student may prefer
    repeating one great service over a worse distinct one even when there are
-   enough services to give them a fully distinct set.
+   enough services to give them a fully distinct set. When `pastShiftsEnabled`
+   is on, the cost the engine actually optimises against isn't the raw grade:
+   `computeWeightedCost` (`src/domain/matching/weightedCost.ts`) adds one
+   point per shift already done at that service, capped at `rotations`, so a
+   heavily-repeated Excellent can end up costing more than a fresh Passable.
+   Every grade is still graded — history steers which of an extern's own
+   grades gets prioritised, it never substitutes for one.
 2. **Phase 1 — min-cost flow** picks each student's set of `k` (=rotations)
    services — distinct unless `allowRepeatedServices` is on and a repeat is
-   actually cheaper — minimising the worst grade anyone receives first
-   (binary search over the 4 levels), then the total among solutions tied on
-   that worst grade.
+   actually cheaper — minimising the worst *effective* cost anyone receives
+   first (binary search), then the total among solutions tied on that
+   worst cost. "Effective" is grade cost alone unless `pastShiftsEnabled` is
+   on, in which case it's the weighted cost above; the displayed worst-grade
+   and total-cost stats are always recomputed back to plain grade terms
+   afterward (see `ComputeResultUseCase`), so what a member reads never
+   silently switches units.
 3. **Phase 2 — bipartite edge colouring** schedules that fixed service set
    into `k` rotations respecting per-rotation capacity. Always succeeds once
    phase 1 does — see `src/domain/matching/edgeColouring.ts`.
@@ -97,9 +107,14 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
    themselves — a hash of each vote's content (who, and what they graded),
    never of when they voted or which group happened to contain them (see
    `src/domain/lottery.ts`). Two different groups with the same members
-   casting the same grades produce the identical seed, order, and assignment.
-   Nobody can act on the resulting order: by the time anyone can compute
-   anything, their own vote must already be locked and unchangeable.
+   casting the same grades produce the identical seed and order — and, with
+   `pastShiftsEnabled` off (the default), the identical assignment too. With
+   it on, the assignment can legitimately differ between two otherwise
+   identical groups whose members carry different shift histories, since
+   history is now part of what's being optimised; the seed and order stay
+   reproducible regardless. Nobody can act on the resulting order: by the
+   time anyone can compute anything, their own vote must already be locked
+   and unchangeable.
 
 ### What is and isn't guaranteed
 
@@ -207,6 +222,16 @@ version. Summary:
   verified — the app relies on it being publicly visible to the whole group
   before voting opens (any error is visible to the people it's about, same
   as a wrong service capacity would be), not on any technical check.
+- The past-shift penalty is a fixed per-edge weight computed once from
+  cross-cycle history; it does not additionally escalate for a *second*
+  repeat of the same service inside the current cycle when
+  `allowRepeatedServices` is also on — that within-cycle spread is governed
+  separately, by `allowRepeatedServices`/`perStudentServiceCap`. Modelling
+  both together would need a convex-cost-flow rewrite of `buildNetwork`
+  (splitting each student→service edge into `rotations` unit-capacity edges
+  with increasing cost), which was judged not worth the risk given the
+  edge-multiplicity bugs this module has already had (see the testing
+  section above).
 
 ## Development
 
