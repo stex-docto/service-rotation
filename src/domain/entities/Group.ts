@@ -52,6 +52,12 @@ export interface Group {
     bannedMembers: MemberSet
     createdBy: UserId
     createdDate: Date
+    // The group this one was cloned from, if any — set once at creation,
+    // never changed afterward (see CreateGroupUseCase). Purely informational
+    // provenance: it grants no extra read access (any signed-in user holding
+    // a group id can already `get` it) and drives nothing on its own — it's
+    // what a future "import shift history" feature will read from.
+    predecessorGroupId: GroupId | null
 }
 
 export class GroupEntity implements Group {
@@ -67,7 +73,8 @@ export class GroupEntity implements Group {
         public readonly inviteOpen: boolean,
         public readonly bannedMembers: MemberSet,
         public readonly createdBy: UserId,
-        public readonly createdDate: Date
+        public readonly createdDate: Date,
+        public readonly predecessorGroupId: GroupId | null
     ) {}
 
     // How many rotations each member goes through — always exactly the
@@ -76,7 +83,12 @@ export class GroupEntity implements Group {
         return this.rotationSlots.length
     }
 
-    static create(name: string, createdBy: UserId, id?: GroupId): GroupEntity {
+    static create(
+        name: string,
+        createdBy: UserId,
+        id?: GroupId,
+        predecessorGroupId: GroupId | null = null
+    ): GroupEntity {
         return new GroupEntity(
             id || GroupId.generate(),
             name,
@@ -89,7 +101,8 @@ export class GroupEntity implements Group {
             true,
             new MemberSet(),
             createdBy,
-            new Date()
+            new Date(),
+            predecessorGroupId
         )
     }
 
@@ -114,7 +127,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -147,7 +161,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -169,7 +184,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -191,7 +207,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -210,7 +227,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -232,7 +250,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -254,7 +273,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -275,7 +295,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -312,7 +333,8 @@ export class GroupEntity implements Group {
             false,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -343,7 +365,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -369,7 +392,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -395,7 +419,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers.add(entry),
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -425,7 +450,8 @@ export class GroupEntity implements Group {
             this.inviteOpen,
             this.bannedMembers.remove(userId),
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -448,7 +474,8 @@ export class GroupEntity implements Group {
             false,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
@@ -473,7 +500,8 @@ export class GroupEntity implements Group {
             true,
             this.bannedMembers,
             this.createdBy,
-            this.createdDate
+            this.createdDate,
+            this.predecessorGroupId
         )
     }
 
