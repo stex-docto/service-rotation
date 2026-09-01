@@ -58,7 +58,14 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
   self-punishing, so letting each member fill in their own would hand them
   a free lever alongside the honest one. It's public to every member from
   the moment it's entered (the group document already is), and frozen once
-  voting opens, same as services and rotations.
+  voting opens, same as services and rotations. On a continuation group,
+  the organizer can import these counts from the predecessor in one click:
+  it recomputes the predecessor's own live result (the same computation
+  anyone there could run) under the organizer's own predecessor membership,
+  counts each continuing member's assignments per service name, and
+  falls back to a zero row for anyone it can't match (new members, or
+  anyone whose predecessor vote isn't readable). Re-running it simply
+  overwrites the previous import with a fresh one.
 
 ## Mechanism
 

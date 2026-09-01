@@ -11,6 +11,7 @@ import {
     GetMyGroupsUseCase,
     GetMyVoteUseCase,
     GetVotingProgressUseCase,
+    ImportShiftHistoryUseCase,
     JoinGroupUseCase,
     LeaveGroupUseCase,
     LockVoteUseCase,
@@ -57,6 +58,7 @@ export interface DependencyContext {
     getMyGroupsUseCase: GetMyGroupsUseCase
     setGroupHiddenUseCase: SetGroupHiddenUseCase
     setMemberShiftHistoryUseCase: SetMemberShiftHistoryUseCase
+    importShiftHistoryUseCase: ImportShiftHistoryUseCase
 }
 
 export const Dependencies = createContext<DependencyContext | undefined>(undefined)

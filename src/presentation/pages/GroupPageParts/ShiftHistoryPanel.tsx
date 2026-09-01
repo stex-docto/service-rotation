@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { Box, Heading, NumberInput, Switch, Table, Text } from '@chakra-ui/react'
+import { useEffect, useRef, useState } from 'react'
+import { Box, Button, Heading, NumberInput, Switch, Table, Text } from '@chakra-ui/react'
 import { CurrentUser, GroupEntity, UserId } from '@domain'
 import { MAX_MANUAL_SHIFT_HISTORY } from '@application'
 import { useDependencies } from '@presentation/hooks/useDependencies'
@@ -21,10 +21,30 @@ interface ShiftHistoryPanelProps {
 // rendered while the group is a draft; GradeSheetForm/LiveResultView carry
 // the open-phase equivalents once it's frozen.
 export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistoryPanelProps) {
-    const { updateGroupSettingsUseCase, setMemberShiftHistoryUseCase } = useDependencies()
+    const {
+        updateGroupSettingsUseCase,
+        setMemberShiftHistoryUseCase,
+        importShiftHistoryUseCase,
+        getGroupUseCase
+    } = useDependencies()
 
     const [enabled, setEnabled] = useState(group.pastShiftsEnabled)
     const [error, setError] = useState<string | null>(null)
+
+    const [predecessorName, setPredecessorName] = useState<string | null>(null)
+    const [importing, setImporting] = useState(false)
+    const [unmatchedCount, setUnmatchedCount] = useState<number | null>(null)
+
+    // Best-effort label for the import button — a missing/unreadable
+    // predecessor just means the button says "le groupe précédent" instead
+    // of its name, not an error worth surfacing here.
+    useEffect(() => {
+        if (!group.predecessorGroupId) return
+        getGroupUseCase
+            .execute({ groupId: group.predecessorGroupId })
+            .then(result => setPredecessorName(result.group?.name ?? null))
+            .catch(() => setPredecessorName(null))
+    }, [group.predecessorGroupId, getGroupUseCase])
 
     const members = group.getMembers()
     const services = group.getServices()
@@ -59,6 +79,30 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
             })
         } catch (err) {
             setError(errorMessageFrom(err))
+        }
+    }
+
+    async function runImport() {
+        setImporting(true)
+        setError(null)
+        try {
+            const result = await importShiftHistoryUseCase.execute({ groupId: group.id })
+            const next = new Map<string, number>()
+            for (const member of members) {
+                const row = result.group.getShiftHistoryFor(member.userId)
+                for (const service of services) {
+                    next.set(
+                        `${member.userId.value}:${service.id.value}`,
+                        row.get(service.id.value) ?? 0
+                    )
+                }
+            }
+            setCounts(next)
+            setUnmatchedCount(result.unmatchedMemberIds.length)
+        } catch (err) {
+            setError(errorMessageFrom(err))
+        } finally {
+            setImporting(false)
         }
     }
 
@@ -120,6 +164,21 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
                     </Switch.Control>
                     <Switch.Label>Suivre l'historique des stages déjà faits</Switch.Label>
                 </Switch.Root>
+            )}
+
+            {isCreator && showGrid && group.predecessorGroupId && (
+                <Box mb={4}>
+                    <Button size="sm" variant="outline" onClick={runImport} loading={importing}>
+                        Importer l'historique de {predecessorName ?? 'le groupe précédent'}
+                    </Button>
+                    {unmatchedCount !== null && (
+                        <Text fontSize="xs" colorPalette="gray" mt={1}>
+                            {unmatchedCount === 0
+                                ? 'Historique importé pour tout le monde.'
+                                : `Historique importé — ${unmatchedCount} membre${unmatchedCount > 1 ? 's' : ''} sans correspondance (nouveaux ou absents du groupe précédent), laissé${unmatchedCount > 1 ? 's' : ''} à 0.`}
+                        </Text>
+                    )}
+                </Box>
             )}
 
             <ErrorMessage message={error} />

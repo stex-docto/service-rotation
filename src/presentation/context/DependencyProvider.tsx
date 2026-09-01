@@ -12,6 +12,7 @@ import {
     GetMyGroupsUseCase,
     GetMyVoteUseCase,
     GetVotingProgressUseCase,
+    ImportShiftHistoryUseCase,
     JoinGroupUseCase,
     LeaveGroupUseCase,
     LockVoteUseCase,
@@ -100,6 +101,11 @@ function initDependencies(): DependencyContext {
         groupRepository,
         signInUseCase
     )
+    const importShiftHistoryUseCase = new ImportShiftHistoryUseCase(
+        groupRepository,
+        voteRepository,
+        signInUseCase
+    )
 
     return {
         signInUseCase,
@@ -128,7 +134,8 @@ function initDependencies(): DependencyContext {
         getMyVoteUseCase,
         getMyGroupsUseCase,
         setGroupHiddenUseCase,
-        setMemberShiftHistoryUseCase
+        setMemberShiftHistoryUseCase,
+        importShiftHistoryUseCase
     }
 }
 
