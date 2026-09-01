@@ -33,6 +33,7 @@ import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
 import { MembershipPanel } from './MembershipPanel'
+import { ShiftHistoryPanel } from './ShiftHistoryPanel'
 
 const AUTOSAVE_DELAY_MS = 300
 
@@ -544,6 +545,8 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                         )}
                     </VStack>
                 </Box>
+
+                <ShiftHistoryPanel group={group} isCreator={false} currentUser={currentUser} />
             </VStack>
         )
     }
@@ -664,6 +667,8 @@ export function DraftAdminView({ group, isCreator, currentUser }: DraftAdminView
                     <Switch.Label>Autoriser un même service sur plusieurs rotations</Switch.Label>
                 </Switch.Root>
             </Box>
+
+            <ShiftHistoryPanel group={group} isCreator currentUser={currentUser} />
 
             {servicesShortfall && (
                 <Alert.Root status="error">

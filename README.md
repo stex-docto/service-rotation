@@ -45,6 +45,20 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
 - **Transparency**: locking your own vote is what unlocks reading anyone
   else's — mutual, symmetric, no exceptions for the organizer. Fairness is
   verified by recomputing, never taken on trust.
+- **Continuation groups**: a new group can be created pre-filled from one
+  the creator already has access to (created or joined) — services,
+  rotation count, and `allowRepeatedServices` carry over, so a cohort that
+  turns over can start its next rotation cycle without rebuilding from
+  scratch. Rotation slot dates/names don't carry over — those belong to the
+  new period.
+- **Past-shift history**: the organizer can turn on per-service "shifts
+  already done" counts for the group — one number per member per service,
+  covering exposure from before this cycle. This is organizer-entered, not
+  self-reported: unlike a grade, a shift count is neither bounded nor
+  self-punishing, so letting each member fill in their own would hand them
+  a free lever alongside the honest one. It's public to every member from
+  the moment it's entered (the group document already is), and frozen once
+  voting opens, same as services and rotations.
 
 ## Mechanism
 
@@ -177,6 +191,10 @@ version. Summary:
 - Two services sharing the same name within one group collide in the lottery
   seed's hash (see `src/domain/lottery.ts`) — harmless to the lottery's
   validity, just not perfectly reproducible in that specific edge case.
+- Past-shift history is organizer-entered and trusted, not independently
+  verified — the app relies on it being publicly visible to the whole group
+  before voting opens (any error is visible to the people it's about, same
+  as a wrong service capacity would be), not on any technical check.
 
 ## Development
 
