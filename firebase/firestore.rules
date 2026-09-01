@@ -378,6 +378,60 @@ service cloud.firestore {
           );
         allow delete: if false;
       }
+
+      // ---------------------------------------------------------------------
+      // groups/{groupId}/shiftHistoryProposals/{uid} — a member's proposed
+      // correction to their own row of the group document's shiftHistory
+      // map. The organizer stays the sole writer of that map itself (see
+      // README's honesty argument); this only lets a member flag a wrong
+      // number and the creator accept or reject it, with the outcome as
+      // visible to the group as the number it's about. Draft-only, same as
+      // shiftHistory itself.
+      // ---------------------------------------------------------------------
+      match /shiftHistoryProposals/{uid} {
+        function parentGroup() {
+          return get(/databases/$(database)/documents/groups/$(groupId)).data;
+        }
+        function isGroupMember() {
+          return isSignedIn() && (
+            request.auth.uid in parentGroup().memberUids || request.auth.uid == parentGroup().createdBy
+          );
+        }
+
+        allow get: if isGroupMember();
+        allow list: if isGroupMember();
+
+        // A member proposes (or re-proposes, overwriting their own still-
+        // pending draft) a correction to their own row.
+        allow create: if isSignedIn()
+          && request.auth.uid == uid
+          && parentGroup().status == 'draft'
+          && uid in parentGroup().memberUids
+          && request.resource.data.status == 'pending';
+        allow update: if isSignedIn() && (
+          // The proposer edits their own proposal, or reopens a resolved
+          // one back to pending — see ShiftHistoryProposalEntity.resolve:
+          // a rejected proposal isn't the end of the conversation, and a
+          // fresh one is exactly as visible as the first.
+          (
+            request.auth.uid == uid
+            && parentGroup().status == 'draft'
+            && request.resource.data.status == 'pending'
+          )
+          ||
+          // The creator resolves it — flips status only, never the numbers
+          // or justification, so "rejected" can never double as a silent
+          // edit of what was actually proposed.
+          (
+            request.auth.uid == parentGroup().createdBy
+            && resource.data.status == 'pending'
+            && (request.resource.data.status == 'accepted' ||
+                request.resource.data.status == 'rejected')
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          )
+        );
+        allow delete: if false;
+      }
     }
 
     // ---------------------------------------------------------------------

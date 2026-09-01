@@ -4,6 +4,7 @@ import {
     GroupNotFoundError,
     GroupRepository,
     ResultEntity,
+    ServiceId,
     VoteEntity,
     VoteRepository
 } from '@domain'
@@ -62,6 +63,7 @@ export class ComputeResultUseCase {
             const computed = computeAssignment(input)
 
             const votesByUserId = new Map(votes.map(vote => [vote.userId.value, vote.userId]))
+            const voteByStudentId = new Map(votes.map(vote => [vote.userId.value, vote]))
             const servicesById = new Map(
                 group.getServices().map(service => [service.id.value, service])
             )
@@ -87,14 +89,52 @@ export class ComputeResultUseCase {
                 }
             })
 
+            // When past-shift weighting is on, computed.worstCost/totalCost
+            // describe weighted cost (grade + history penalty), not grade
+            // cost — the cast below would silently mislabel a weighted value
+            // as a GradeLevel. Recompute both straight from each
+            // assignment's actual grade instead, so the displayed stats
+            // always mean "worst/total grade received" regardless of
+            // whether weighting influenced which assignment was chosen.
+            // theoreticalMinTotalCost has no per-edge breakdown to recompute
+            // from (see assign.ts's second, uncapped buildNetwork pass) —
+            // it's passed through as-is, in weighted units when the flag is
+            // on; LiveResultView decides whether it's meaningful to show
+            // based on group.pastShiftsEnabled, since this use case has no
+            // UI-facing unit tag to attach to it.
+            let worstGradeLevel = computed.worstCost as GradeLevel
+            let totalCost = computed.totalCost
+
+            if (group.pastShiftsEnabled) {
+                let worstGradeCost = 0
+                let totalGradeCost = 0
+                for (const assignment of computed.assignments) {
+                    const vote = voteByStudentId.get(assignment.studentId)
+                    if (!vote) {
+                        throw new Error(
+                            `Internal invariant violated: assignment references unknown vote ${assignment.studentId}`
+                        )
+                    }
+                    for (const serviceIdValue of assignment.rotationServiceIds) {
+                        const grade = vote.gradeFor(ServiceId.from(serviceIdValue))
+                        if (!grade) {
+                            throw new Error(
+                                `Internal invariant violated: assignment references ungraded service ${serviceIdValue}`
+                            )
+                        }
+                        totalGradeCost += grade.cost
+                        worstGradeCost = Math.max(worstGradeCost, grade.cost)
+                    }
+                }
+                worstGradeLevel = worstGradeCost as GradeLevel
+                totalCost = totalGradeCost
+            }
+
             const result = ResultEntity.create(
                 command.groupId,
                 assignments,
-                // The matching engine is scale-agnostic (see costBoundsFor in
-                // assign.ts) — this cast is safe only because this use case
-                // always feeds it costs straight from Grade's 0..3 scale.
-                computed.worstCost as GradeLevel,
-                computed.totalCost,
+                worstGradeLevel,
+                totalCost,
                 computed.theoreticalMinTotalCost,
                 input.lotteryOrder.join(','),
                 votes.map(vote => vote.userId.value)

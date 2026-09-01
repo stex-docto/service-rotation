@@ -27,7 +27,7 @@ help: ## Prints this help
 
 
 firebase.login: ## Authenticate the firebase-tools container (persists in the firebase-tools-config volume)
-	@docker compose run --rm --workdir "/firebase" firebase-tools firebase login --no-localhost
+	@docker compose run --rm --workdir "/firebase" firebase-tools firebase login --no-localhost --reauth
 
 firebase.deploy.dev: ## Push firestore rules/indexes to the dev Firebase project
 	@docker compose run --rm --workdir "/firebase" firebase-tools firebase deploy -P dev

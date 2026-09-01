@@ -574,6 +574,37 @@ export class GroupEntity implements Group {
         return this.shiftHistory.get(userId.value) ?? new Map()
     }
 
+    // Replaces the whole history in one go — used by importing from a
+    // predecessor group. Unlike setMemberShiftHistory, this doesn't require
+    // every uid to already be a member: a predecessor member who hasn't
+    // (re)joined this group yet simply won't show up in getShiftHistoryFor
+    // until they do, since that lookup is keyed by uid regardless of
+    // whether the uid is still a current member — same tolerance as an
+    // orphaned vote.
+    setShiftHistory(history: Map<string, Map<string, number>>): GroupEntity {
+        this.requireDraft('set the shift history')
+
+        const copy = new Map([...history].map(([uid, counts]) => [uid, new Map(counts)]))
+
+        return new GroupEntity(
+            this.id,
+            this.name,
+            this.status,
+            this.services,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            this.allowRepeatedServices,
+            this.inviteOpen,
+            this.bannedMembers,
+            this.createdBy,
+            this.createdDate,
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            copy
+        )
+    }
+
     // Replaces one member's whole row — used both for a manual organizer
     // edit and, once proposals exist, for accepting one. Whole-row rather
     // than per-service so a single autosave can't leave the row half

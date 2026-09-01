@@ -153,12 +153,14 @@ export function LiveResultView({ group, computeResult, currentUser }: LiveResult
                     <strong>{Grade.from(result.worstGradeLevel).label}</strong>
                 </Text>
                 <Text fontSize="sm">
-                    Somme totale des coûts : <strong>{result.totalCost}</strong> (minimum théorique
-                    sans contrainte d'équité : {result.theoreticalMinTotalCost})
+                    Somme totale des coûts : <strong>{result.totalCost}</strong>
+                    {!group.pastShiftsEnabled &&
+                        ` (minimum théorique sans contrainte d'équité : ${result.theoreticalMinTotalCost})`}
                 </Text>
                 <Text fontSize="xs" colorPalette="gray" mt={2}>
-                    L'écart entre les deux est le prix payé pour garantir que personne ne soit
-                    sacrifié afin d'améliorer légèrement le total du groupe.
+                    {group.pastShiftsEnabled
+                        ? "Ce total ne compte que les notes reçues. L'algorithme tient aussi compte de l'historique des stages déjà faits pour choisir les affectations, mais cet historique n'apparaît pas dans ce chiffre — le minimum théorique sans contrainte d'équité n'est donc pas comparable ici et n'est pas affiché."
+                        : "L'écart entre les deux est le prix payé pour garantir que personne ne soit sacrifié afin d'améliorer légèrement le total du groupe."}
                 </Text>
             </Box>
 
