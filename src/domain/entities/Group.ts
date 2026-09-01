@@ -63,6 +63,14 @@ export interface Group {
     // predecessorGroupId — usable standalone (organizer types the numbers
     // in) or left off on a cloned group.
     pastShiftsEnabled: boolean
+    // Whether shiftHistory should auto-fill from the predecessor for any
+    // current member who doesn't have a row yet (see ImportShiftHistoryUseCase).
+    // Draft-only, requires predecessorGroupId. Presence in `shiftHistory` is
+    // the only "has this member been set" signal — there is deliberately no
+    // separate provenance flag, so once a row exists (manual entry, an
+    // accepted proposal, or a past auto-fill) this setting never touches it
+    // again; it only ever fills genuinely absent rows.
+    importPastShiftsFromPredecessor: boolean
     // uid -> serviceId -> shifts already done, before this cycle started.
     // Organizer-owned: entered by the creator while still a draft, public to
     // every member from the moment it's entered (this is the group
@@ -91,6 +99,7 @@ export class GroupEntity implements Group {
         public readonly createdDate: Date,
         public readonly predecessorGroupId: GroupId | null,
         public readonly pastShiftsEnabled: boolean,
+        public readonly importPastShiftsFromPredecessor: boolean,
         public readonly shiftHistory: Map<string, Map<string, number>>
     ) {}
 
@@ -121,6 +130,7 @@ export class GroupEntity implements Group {
             new Date(),
             predecessorGroupId,
             false,
+            false,
             new Map()
         )
     }
@@ -141,6 +151,7 @@ export class GroupEntity implements Group {
         name?: string
         allowRepeatedServices?: boolean
         pastShiftsEnabled?: boolean
+        importPastShiftsFromPredecessor?: boolean
     }): GroupEntity {
         this.requireDraft('update settings')
 
@@ -159,6 +170,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             options.pastShiftsEnabled ?? this.pastShiftsEnabled,
+            options.importPastShiftsFromPredecessor ?? this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -195,6 +207,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -220,6 +233,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -245,6 +259,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -267,6 +282,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -292,6 +308,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -317,6 +334,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -341,6 +359,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -381,6 +400,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -412,6 +432,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -446,6 +467,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -475,6 +497,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -504,6 +527,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -537,6 +561,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -563,6 +588,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -591,6 +617,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             this.shiftHistory
         )
     }
@@ -638,6 +665,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             copy
         )
     }
@@ -670,6 +698,7 @@ export class GroupEntity implements Group {
             this.createdDate,
             this.predecessorGroupId,
             this.pastShiftsEnabled,
+            this.importPastShiftsFromPredecessor,
             nextHistory
         )
     }

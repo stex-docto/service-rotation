@@ -16,22 +16,29 @@ export interface ImportShiftHistoryCommand {
 
 export interface ImportShiftHistoryResult {
     group: GroupEntity
-    // Current members who couldn't be matched against the predecessor's own
-    // computed result — never a predecessor member, their predecessor vote
-    // wasn't locked, the caller's own predecessor vote isn't locked (which
-    // makes every OTHER predecessor vote unreadable too, see
-    // VoteRepository.findReadable), or the predecessor has no computable
-    // result at all. Written as an all-zero row, surfaced here so the
-    // creator knows who still needs manual entry.
-    unmatchedMemberIds: string[]
+    // Current members still without a shiftHistory row after this run —
+    // never a predecessor member, their predecessor vote wasn't locked, the
+    // caller's own predecessor vote isn't locked (which makes every OTHER
+    // predecessor vote unreadable too, see VoteRepository.findReadable), or
+    // the predecessor has no computable result at all. Left absent rather
+    // than written as zero, so the next run retries them instead of
+    // freezing them at 0 forever — see Group.importPastShiftsFromPredecessor.
+    stillMissingMemberIds: string[]
 }
 
-// Best-effort and re-runnable while the group is still a draft — importing
-// again simply overwrites shiftHistory with a freshly recomputed snapshot of
-// the predecessor. Requires no new read permission beyond what any member
-// already has: this only works because ComputeResultUseCase-style
-// computation is available to the caller under their own predecessor
-// membership, never on another member's behalf.
+// Auto-fills shiftHistory for whichever current members don't have a row
+// yet (see ShiftHistoryPanel's effect, driven by
+// Group.importPastShiftsFromPredecessor) — never touches a uid that already
+// has one. Presence in shiftHistory IS "has this member been set"; there is
+// deliberately no separate provenance flag (manual edit, an accepted
+// proposal, and a past run of this same use case are indistinguishable, by
+// design — see Group.ts). Re-runnable and idempotent while the group is
+// still a draft: a later run fills in anyone new (a member who just joined,
+// or one who just became matchable now that the predecessor's result is
+// computable) and never overwrites anyone already set. Requires no new read
+// permission beyond what any member already has: this only works because
+// ComputeResultUseCase-style computation is available to the caller under
+// their own predecessor membership, never on another member's behalf.
 export class ImportShiftHistoryUseCase {
     constructor(
         private readonly groupRepository: GroupRepository,
@@ -51,6 +58,15 @@ export class ImportShiftHistoryUseCase {
         }
         if (!group.predecessorGroupId) {
             throw new Error('This group has no predecessor to import history from')
+        }
+
+        const missingMemberIds = group
+            .getMembers()
+            .map(member => member.userId.value)
+            .filter(uid => !group.shiftHistory.has(uid))
+
+        if (missingMemberIds.length === 0) {
+            return { group, stillMissingMemberIds: [] }
         }
 
         const predecessor = await this.groupRepository.findById(group.predecessorGroupId)
@@ -91,7 +107,8 @@ export class ImportShiftHistoryUseCase {
                     throw error
                 }
                 // No computable result for the predecessor right now — every
-                // current member falls back to a zero row below.
+                // still-missing member stays missing below, to retry on the
+                // next run.
             }
         }
 
@@ -99,13 +116,13 @@ export class ImportShiftHistoryUseCase {
             group.getServices().map(service => [service.name, service.id.value])
         )
 
-        const history = new Map<string, Map<string, number>>()
-        const unmatchedMemberIds: string[] = []
-        for (const member of group.getMembers()) {
-            const byName = countsByUidAndServiceName.get(member.userId.value)
+        const history = new Map(group.shiftHistory)
+        const stillMissingMemberIds: string[] = []
+        let filledCount = 0
+        for (const uid of missingMemberIds) {
+            const byName = countsByUidAndServiceName.get(uid)
             if (!byName) {
-                unmatchedMemberIds.push(member.userId.value)
-                history.set(member.userId.value, new Map())
+                stillMissingMemberIds.push(uid)
                 continue
             }
             const byServiceId = new Map<string, number>()
@@ -115,12 +132,17 @@ export class ImportShiftHistoryUseCase {
                     byServiceId.set(serviceId, count)
                 }
             }
-            history.set(member.userId.value, byServiceId)
+            history.set(uid, byServiceId)
+            filledCount++
+        }
+
+        if (filledCount === 0) {
+            return { group, stillMissingMemberIds }
         }
 
         const updatedGroup = group.setShiftHistory(history)
         await this.groupRepository.save(updatedGroup)
 
-        return { group: updatedGroup, unmatchedMemberIds }
+        return { group: updatedGroup, stillMissingMemberIds }
     }
 }

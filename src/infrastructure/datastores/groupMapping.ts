@@ -66,6 +66,10 @@ export type FirebaseGroupDocument = {
     // see toGroupEntity's fallback (defaults to false). Always written from
     // here on.
     pastShiftsEnabled?: boolean
+    // Optional only for documents written before this setting existed —
+    // see toGroupEntity's fallback (defaults to false). Always written from
+    // here on.
+    importPastShiftsFromPredecessor?: boolean
     // uid -> serviceId -> shift count. See Group.ts's shiftHistory. Absent
     // on documents written before this feature existed.
     shiftHistory?: { [uid: string]: { [serviceId: string]: number } }
@@ -122,6 +126,7 @@ export function toGroupDocument(group: GroupEntity): FirebaseGroupDocument {
         createdDate: group.createdDate.toISOString(),
         predecessorGroupId: group.predecessorGroupId?.value ?? null,
         pastShiftsEnabled: group.pastShiftsEnabled,
+        importPastShiftsFromPredecessor: group.importPastShiftsFromPredecessor,
         shiftHistory
     }
 }
@@ -183,6 +188,7 @@ export function toGroupEntity(data: FirebaseGroupDocument): GroupEntity {
         new Date(data.createdDate),
         data.predecessorGroupId ? GroupId.from(data.predecessorGroupId) : null,
         data.pastShiftsEnabled ?? false,
+        data.importPastShiftsFromPredecessor ?? false,
         new Map(
             Object.entries(data.shiftHistory ?? {}).map(([uid, counts]) => [
                 uid,
