@@ -8,7 +8,7 @@ import {
     UserId
 } from '@domain'
 
-export type GroupStatus = 'draft' | 'open'
+export type GroupStatus = 'draft' | 'open' | 'done'
 
 // Either 'name' the rotation slots yourself (e.g. "Automne") or attach a
 // calendar date range to each — never both displayed at once. Purely
@@ -128,6 +128,12 @@ export class GroupEntity implements Group {
     private requireDraft(action: string): void {
         if (this.status !== 'draft') {
             throw new Error(`Cannot ${action}: the group is no longer a draft`)
+        }
+    }
+
+    private requireOpen(action: string): void {
+        if (this.status !== 'open') {
+            throw new Error(`Cannot ${action}: the group is not open`)
         }
     }
 
@@ -370,6 +376,37 @@ export class GroupEntity implements Group {
             this.rotationMode,
             this.allowRepeatedServices,
             false,
+            this.bannedMembers,
+            this.createdBy,
+            this.createdDate,
+            this.predecessorGroupId,
+            this.pastShiftsEnabled,
+            this.shiftHistory
+        )
+    }
+
+    // Marks voting as complete — a one-way 'open' -> 'done' transition,
+    // purely for display: OpenView still handles it, GetVotingProgressUseCase
+    // and ComputeResultUseCase still work exactly the same in 'done'. This
+    // entity doesn't know about anyone's votes (that's a separate
+    // aggregate — see votes/{uid} and voteStatus/{uid}), so it trusts the
+    // caller (FinishGroupUseCase) to have already verified every current
+    // member's vote is locked. No new field is added: shiftHistory,
+    // services, etc. are all already frozen since open(), so a full
+    // status-only diff is all this ever writes.
+    finish(): GroupEntity {
+        this.requireOpen('finish the group')
+
+        return new GroupEntity(
+            this.id,
+            this.name,
+            'done',
+            this.services,
+            this.members,
+            this.rotationSlots,
+            this.rotationMode,
+            this.allowRepeatedServices,
+            this.inviteOpen,
             this.bannedMembers,
             this.createdBy,
             this.createdDate,

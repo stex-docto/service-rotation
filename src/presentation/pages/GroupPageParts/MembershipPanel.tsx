@@ -136,7 +136,7 @@ export function MembershipPanel({
         }
     }
 
-    const rosterLocked = group.status === 'open' && !group.inviteOpen
+    const rosterLocked = group.status !== 'draft' && !group.inviteOpen
     // Matches Group.unban's own guard: a ban can only be undone while the
     // roster isn't locked yet — true in draft, and forever false past that
     // point (whether locked manually or by opening the group for voting).
@@ -293,7 +293,7 @@ export function MembershipPanel({
                                             ? "Les membres ne sont pas encore verrouillés : tu pourras annuler ce bannissement plus tard si besoin, tant que ce n'est pas le cas."
                                             : 'Les membres sont verrouillés : ce bannissement est définitif, impossible à annuler, et cette personne ne pourra plus rejoindre avec ce lien.'}
                                     </Text>
-                                    {group.status === 'open' && (
+                                    {group.status !== 'draft' && (
                                         <Text>
                                             Si ses notes étaient déjà verrouillées, elles seront
                                             simplement ignorées lors du calcul du tirage.

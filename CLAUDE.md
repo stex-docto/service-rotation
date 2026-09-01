@@ -55,12 +55,20 @@ Hexagonal (ports & adapters):
 - `src/presentation/` — React. DI via `DependencyContext` (interface) +
   `Dependencies` (the actual `createContext`) + `DependencyProvider` (the
   composition root) + `useDependencies()` hook. `GroupPage.tsx` branches on
-  `group.status` into `GroupPageParts/{DraftAdminView,OpenView}` — only two
-  states now, `draft` and `open`, there is no third "computed" status — rather
-  than using separate routes. `OpenView` itself handles join/vote/leave and
-  embeds `LiveResultView` for an on-demand, never-stored computation. The app
-  is one shareable link per group, and what you see depends on your role and
-  the group's phase, not the URL.
+  `group.status` into `GroupPageParts/{DraftAdminView,OpenView}` — `draft`
+  goes to `DraftAdminView`, `open` and `done` both go to `OpenView`, which
+  reads `group.status` itself where the two need to render differently
+  (see below), rather than adding a third route/view. `OpenView` itself
+  handles join/vote/leave and embeds `LiveResultView` for an on-demand,
+  never-stored computation. The app is one shareable link per group, and
+  what you see depends on your role and the group's phase, not the URL.
+  `done` is a display-only terminal status: `FinishGroupUseCase` sets it
+  once every current member's vote is locked, but nothing else — reading
+  votes, computing a result, and banning a member all behave exactly as in
+  `open` (see `firebase/firestore.rules` clause (h) and `Group.finish`).
+  There's no Cloud Function, so the transition only actually happens once
+  the creator's own client has the group open — `OpenView`'s effect calls
+  `FinishGroupUseCase` automatically when it detects everyone's locked.
 
 ### Path aliases
 

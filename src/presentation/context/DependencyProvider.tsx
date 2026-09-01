@@ -14,6 +14,7 @@ import {
     ComputeResultUseCase,
     CreateGroupUseCase,
     DeleteGroupUseCase,
+    FinishGroupUseCase,
     GetGroupUseCase,
     GetMyGroupsUseCase,
     GetMyVoteUseCase,
@@ -80,6 +81,11 @@ function initDependencies(): DependencyContext {
     const updateRotationSlotUseCase = new UpdateRotationSlotUseCase(groupRepository, signInUseCase)
     const setRotationModeUseCase = new SetRotationModeUseCase(groupRepository, signInUseCase)
     const openGroupUseCase = new OpenGroupUseCase(groupRepository, signInUseCase)
+    const finishGroupUseCase = new FinishGroupUseCase(
+        groupRepository,
+        voteRepository,
+        signInUseCase
+    )
     const joinGroupUseCase = new JoinGroupUseCase(groupRepository, signInUseCase)
     const leaveGroupUseCase = new LeaveGroupUseCase(groupRepository, voteRepository, signInUseCase)
     const banMemberUseCase = new BanMemberUseCase(groupRepository, signInUseCase)
@@ -146,6 +152,7 @@ function initDependencies(): DependencyContext {
         updateRotationSlotUseCase,
         setRotationModeUseCase,
         openGroupUseCase,
+        finishGroupUseCase,
         joinGroupUseCase,
         leaveGroupUseCase,
         banMemberUseCase,

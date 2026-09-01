@@ -7,6 +7,7 @@ import {
     ComputeResultUseCase,
     CreateGroupUseCase,
     DeleteGroupUseCase,
+    FinishGroupUseCase,
     GetGroupUseCase,
     GetMyGroupsUseCase,
     GetMyVoteUseCase,
@@ -46,6 +47,7 @@ export interface DependencyContext {
     updateRotationSlotUseCase: UpdateRotationSlotUseCase
     setRotationModeUseCase: SetRotationModeUseCase
     openGroupUseCase: OpenGroupUseCase
+    finishGroupUseCase: FinishGroupUseCase
     joinGroupUseCase: JoinGroupUseCase
     leaveGroupUseCase: LeaveGroupUseCase
     banMemberUseCase: BanMemberUseCase

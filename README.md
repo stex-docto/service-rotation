@@ -160,10 +160,16 @@ case.
 See `firebase/firestore.rules` (heavily commented) for the authoritative
 version. Summary:
 
-- **Lifecycle**: `groups/{groupId}` moves `draft → open`, where `open` means
+- **Lifecycle**: `groups/{groupId}` moves `draft → open → done`. `open` means
   *voting enabled* — services and rotations freeze at that point, forever,
   and `inviteOpen` flips to `false` in the same write (see `Group.open`) and
-  can never flip back: `reopenInvite` only works in `draft`. Outside of that,
+  can never flip back: `reopenInvite` only works in `draft`. `done` is set by
+  the creator once every current member's vote is locked (`FinishGroupUseCase`)
+  and is purely a display state — reading votes, computing a result, and
+  banning a member all behave exactly as in `open`; there is still no stored
+  result (see below). Since there's no Cloud Function, this transition only
+  happens once the creator's own client next has the group open — see
+  `OpenView`'s effect. Outside of that,
   membership is independent of status while still a draft: joining and
   leaving are self-service, gated only by `inviteOpen` (freely toggleable by
   the creator up to that point) and, for leaving, the member's own vote not
@@ -222,6 +228,13 @@ version. Summary:
   verified — the app relies on it being publicly visible to the whole group
   before voting opens (any error is visible to the people it's about, same
   as a wrong service capacity would be), not on any technical check.
+- `done` is creator-asserted, not rules-verified: Firestore rules cannot loop
+  over an arbitrary member count to confirm every vote is actually locked, so
+  that check lives only in `FinishGroupUseCase`. A creator could in principle
+  hand-craft a write that flips `status` to `done` early. The consequence is
+  narrow — it permanently blocks any member who hadn't yet created a vote
+  document from ever creating one (`votes`/`voteStatus` `create` both require
+  `status == 'open'`) — not a way to see or alter anyone's grades.
 - The past-shift penalty is a fixed per-edge weight computed once from
   cross-cycle history; it does not additionally escalate for a *second*
   repeat of the same service inside the current cycle when
