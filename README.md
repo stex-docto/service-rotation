@@ -59,18 +59,24 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
   a free lever alongside the honest one. It's public to every member from
   the moment it's entered (the group document already is), and frozen once
   voting opens, same as services and rotations. On a continuation group,
-  the organizer can import these counts from the predecessor in one click:
-  it recomputes the predecessor's own live result (the same computation
-  anyone there could run) under the organizer's own predecessor membership,
-  counts each continuing member's assignments per service name, and
-  falls back to a zero row for anyone it can't match (new members, or
-  anyone whose predecessor vote isn't readable). Re-running it simply
-  overwrites the previous import with a fresh one. Any member who spots a
+  the organizer can flip a switch (`importPastShiftsFromPredecessor`) to
+  auto-fill these counts from the predecessor: every time the organizer has
+  the draft open, it recomputes the predecessor's own live result (the same
+  computation anyone there could run) under the organizer's own predecessor
+  membership, and counts each continuing member's assignments per service
+  name. It only ever fills a member's row if that member doesn't have one
+  yet — a manual edit, an accepted correction, or a past auto-fill is never
+  touched or overwritten, no matter how many times it re-runs. Anyone it
+  can't match (new members, or anyone whose predecessor vote isn't readable
+  yet) is simply left unfilled rather than zeroed, so a later visit retries
+  them instead of freezing them at 0. Any member who spots a
   wrong number (whether it was imported or typed in by hand) can propose a
   correction to their own row; the organizer accepts or rejects it, and
   both the proposal and its resolution stay visible to the whole group —
   the same transparency the numbers themselves get, applied to disputes
-  about them too.
+  about them too. Once accepted, an icon next to that member's name opens
+  the original proposal (its counts and justification) so the paper trail
+  behind today's number stays a click away, not just a status label.
 
 ## Mechanism
 

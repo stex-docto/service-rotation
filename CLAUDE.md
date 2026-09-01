@@ -132,11 +132,25 @@ distribution.
 `Group` now carries continuation-group fields alongside
 `allowRepeatedServices`: `predecessorGroupId` (immutable provenance, set only
 at creation by `CreateGroupUseCase`), `pastShiftsEnabled` (draft-only
-setting), and `shiftHistory` (uid → serviceId → count, organizer-owned —
-deliberately not a member's own self-reported field; see README's honesty
-argument for why). A member's counter-proposal to their own row lives in the
-separate `groups/{groupId}/shiftHistoryProposals/{uid}` subcollection, not on
-`Group` itself, mirroring the existing `votes`/`voteStatus` split.
+setting), `importPastShiftsFromPredecessor` (draft-only setting, see below),
+and `shiftHistory` (uid → serviceId → count, organizer-owned — deliberately
+not a member's own self-reported field; see README's honesty argument for
+why). A member's counter-proposal to their own row lives in the separate
+`groups/{groupId}/shiftHistoryProposals/{uid}` subcollection, not on `Group`
+itself, mirroring the existing `votes`/`voteStatus` split.
+
+`importPastShiftsFromPredecessor` drives `ImportShiftHistoryUseCase`, run
+from `ShiftHistoryPanel`'s mount effect (same "no Cloud Function, the
+creator's own client does it on view" pattern as `FinishGroupUseCase`/
+`OpenView`, not a variant of it). There is deliberately no separate
+provenance flag distinguishing "auto-imported" from "manually set" —
+presence of a uid in `shiftHistory` IS that signal, so the use case only
+ever fills a uid that's absent, seeding from `group.shiftHistory` itself and
+never touching one that's already there (manual edit, accepted proposal, or
+a past run). A uid it can't match against the predecessor's computed result
+is left absent, not zeroed, so a later run retries it instead of freezing it
+at 0 forever — see the use case's own comments for why that distinction
+matters once this runs automatically instead of from a manual button.
 
 ## Firestore rules
 

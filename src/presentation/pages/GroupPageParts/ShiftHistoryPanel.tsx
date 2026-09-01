@@ -4,6 +4,7 @@ import {
     Button,
     Dialog,
     Heading,
+    IconButton,
     NumberInput,
     Portal,
     Switch,
@@ -12,6 +13,7 @@ import {
     Textarea,
     VStack
 } from '@chakra-ui/react'
+import { MdInfoOutline } from 'react-icons/md'
 import { CurrentUser, GroupEntity, ShiftHistoryProposalEntity, UserId } from '@domain'
 import { MAX_MANUAL_SHIFT_HISTORY } from '@application'
 import { useDependencies } from '@presentation/hooks/useDependencies'
@@ -72,12 +74,13 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
     useEffect(reloadProposals, [group.id, getShiftHistoryProposalsUseCase])
 
     const [predecessorName, setPredecessorName] = useState<string | null>(null)
+    const [importEnabled, setImportEnabled] = useState(group.importPastShiftsFromPredecessor)
     const [importing, setImporting] = useState(false)
-    const [unmatchedCount, setUnmatchedCount] = useState<number | null>(null)
+    const [stillMissingMemberIds, setStillMissingMemberIds] = useState<string[]>([])
 
-    // Best-effort label for the import button — a missing/unreadable
-    // predecessor just means the button says "le groupe précédent" instead
-    // of its name, not an error worth surfacing here.
+    // Best-effort label for the import switch — a missing/unreadable
+    // predecessor just means it reads "le groupe précédent" instead of its
+    // name, not an error worth surfacing here.
     useEffect(() => {
         if (!group.predecessorGroupId) return
         getGroupUseCase
@@ -122,35 +125,74 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
         }
     }
 
-    async function runImport() {
-        setImporting(true)
+    async function changeImportEnabled(value: boolean) {
+        setImportEnabled(value)
         setError(null)
         try {
-            const result = await importShiftHistoryUseCase.execute({ groupId: group.id })
-            const next = new Map<string, number>()
-            for (const member of members) {
-                const row = result.group.getShiftHistoryFor(member.userId)
-                for (const service of services) {
-                    next.set(
-                        `${member.userId.value}:${service.id.value}`,
-                        row.get(service.id.value) ?? 0
-                    )
-                }
-            }
-            setCounts(next)
-            setUnmatchedCount(result.unmatchedMemberIds.length)
+            await updateGroupSettingsUseCase.execute({
+                groupId: group.id,
+                importPastShiftsFromPredecessor: value
+            })
         } catch (err) {
             setError(errorMessageFrom(err))
-        } finally {
-            setImporting(false)
         }
     }
+
+    const missingMemberIds = members
+        .filter(member => !group.shiftHistory.has(member.userId.value))
+        .map(member => member.userId.value)
+    const missingKey = missingMemberIds.slice().sort().join(',')
+
+    // Auto-fills shiftHistory for whichever current members don't have a row
+    // yet — on mount (page load/reload) and again whenever the missing set
+    // actually changes (a member joins, or the switch is turned on). Never
+    // touches a uid that already has a row, whether from a manual edit, an
+    // accepted proposal, or a previous run of this same effect — see
+    // ImportShiftHistoryUseCase. The ref latches on the exact missing-uid
+    // set (not just an "already ran once" boolean, unlike OpenView's
+    // done-transition effect) because the save this triggers only reaches
+    // `group` after a Firestore round-trip: without latching on the set
+    // itself, the render right after a successful fill (counts/state
+    // updated locally, but `group.shiftHistory` not caught up yet) would
+    // see the same uids as still missing and re-fire immediately.
+    const autoImportAttemptedRef = useRef<string | null>(null)
+
+    useEffect(() => {
+        if (!isCreator || group.status !== 'draft' || !importEnabled || !group.predecessorGroupId) {
+            return
+        }
+        if (missingKey === '' || autoImportAttemptedRef.current === missingKey) {
+            return
+        }
+        autoImportAttemptedRef.current = missingKey
+        setImporting(true)
+        setError(null)
+        importShiftHistoryUseCase
+            .execute({ groupId: group.id })
+            .then(result => {
+                setCounts(previous => {
+                    const next = new Map(previous)
+                    for (const uid of missingMemberIds) {
+                        const row = result.group.getShiftHistoryFor(UserId.from(uid))
+                        for (const service of services) {
+                            next.set(`${uid}:${service.id.value}`, row.get(service.id.value) ?? 0)
+                        }
+                    }
+                    return next
+                })
+                setStillMissingMemberIds(result.stillMissingMemberIds)
+            })
+            .catch(err => setError(errorMessageFrom(err)))
+            .finally(() => setImporting(false))
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isCreator, group.status, group.id, group.predecessorGroupId, importEnabled, missingKey])
 
     const [proposeOpen, setProposeOpen] = useState(false)
     const [proposeCounts, setProposeCounts] = useState<Map<string, number>>(new Map())
     const [proposeJustification, setProposeJustification] = useState('')
     const [proposing, setProposing] = useState(false)
     const [resolvingUserId, setResolvingUserId] = useState<string | null>(null)
+    const [viewingProposalUid, setViewingProposalUid] = useState<string | null>(null)
 
     function openProposeDialog() {
         const own = group.getShiftHistoryFor(currentUser.id)
@@ -268,14 +310,32 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
 
             {isCreator && showGrid && group.predecessorGroupId && (
                 <Box mb={4}>
-                    <Button size="sm" variant="outline" onClick={runImport} loading={importing}>
-                        Importer l'historique de {predecessorName ?? 'le groupe précédent'}
-                    </Button>
-                    {unmatchedCount !== null && (
+                    <Switch.Root
+                        checked={importEnabled}
+                        onCheckedChange={details => changeImportEnabled(details.checked)}
+                    >
+                        <Switch.HiddenInput />
+                        <Switch.Control>
+                            <Switch.Thumb />
+                        </Switch.Control>
+                        <Switch.Label>
+                            Importer depuis {predecessorName ?? 'le groupe précédent'}
+                            {importing ? '…' : ''}
+                        </Switch.Label>
+                    </Switch.Root>
+                    {importEnabled && stillMissingMemberIds.length > 0 && (
                         <Text fontSize="xs" colorPalette="gray" mt={1}>
-                            {unmatchedCount === 0
-                                ? 'Historique importé pour tout le monde.'
-                                : `Historique importé — ${unmatchedCount} membre${unmatchedCount > 1 ? 's' : ''} sans correspondance (nouveaux ou absents du groupe précédent), laissé${unmatchedCount > 1 ? 's' : ''} à 0.`}
+                            {stillMissingMemberIds.length} membre
+                            {stillMissingMemberIds.length > 1 ? 's' : ''} sans correspondance (
+                            {stillMissingMemberIds
+                                .map(
+                                    uid =>
+                                        members.find(m => m.userId.value === uid)?.displayName ??
+                                        uid
+                                )
+                                .join(', ')}
+                            ) — laissé{stillMissingMemberIds.length > 1 ? 's' : ''} à 0, nouvel
+                            essai automatique à la prochaine visite.
                         </Text>
                     )}
                 </Box>
@@ -388,6 +448,22 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
                                                         )
                                                     </Text>
                                                 )}
+                                                {proposals.get(member.userId.value)?.status ===
+                                                    'accepted' && (
+                                                    <IconButton
+                                                        aria-label="Voir la correction acceptée"
+                                                        size="2xs"
+                                                        variant="ghost"
+                                                        ml={1}
+                                                        onClick={() =>
+                                                            setViewingProposalUid(
+                                                                member.userId.value
+                                                            )
+                                                        }
+                                                    >
+                                                        <MdInfoOutline />
+                                                    </IconButton>
+                                                )}
                                             </Table.Cell>
                                             {services.map(service => {
                                                 const value = valueFor(
@@ -495,6 +571,51 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
                                 >
                                     Envoyer
                                 </Button>
+                            </Dialog.Footer>
+                        </Dialog.Content>
+                    </Dialog.Positioner>
+                </Portal>
+            </Dialog.Root>
+
+            <Dialog.Root
+                open={viewingProposalUid !== null}
+                onOpenChange={details => !details.open && setViewingProposalUid(null)}
+            >
+                <Portal>
+                    <Dialog.Backdrop />
+                    <Dialog.Positioner>
+                        <Dialog.Content>
+                            <Dialog.Header>
+                                <Dialog.Title>Correction acceptée</Dialog.Title>
+                            </Dialog.Header>
+                            <Dialog.Body>
+                                {viewingProposalUid &&
+                                    (() => {
+                                        const proposal = proposals.get(viewingProposalUid)
+                                        if (!proposal) return null
+                                        return (
+                                            <VStack gap={2} align="stretch">
+                                                {services.map(service => (
+                                                    <Text key={service.id.value} fontSize="sm">
+                                                        {service.name || '(sans nom)'} :{' '}
+                                                        {proposal.counts.get(service.id.value) ?? 0}
+                                                    </Text>
+                                                ))}
+                                                {proposal.justification && (
+                                                    <Text
+                                                        fontSize="sm"
+                                                        colorPalette="gray"
+                                                        fontStyle="italic"
+                                                    >
+                                                        « {proposal.justification} »
+                                                    </Text>
+                                                )}
+                                            </VStack>
+                                        )
+                                    })()}
+                            </Dialog.Body>
+                            <Dialog.Footer>
+                                <Button onClick={() => setViewingProposalUid(null)}>Fermer</Button>
                             </Dialog.Footer>
                         </Dialog.Content>
                     </Dialog.Positioner>
