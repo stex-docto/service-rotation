@@ -22,7 +22,14 @@ import { errorMessageFrom } from '@presentation/utils/errors'
 
 const STATUS_LABELS: Record<string, string> = {
     draft: 'Brouillon',
-    open: 'Ouvert'
+    open: 'Ouvert',
+    done: 'Terminé'
+}
+
+const STATUS_COLORS: Record<string, string> = {
+    draft: 'gray',
+    open: 'blue',
+    done: 'green'
 }
 
 interface GroupRowProps {
@@ -44,7 +51,7 @@ function GroupRow({ group, actionLabel, actionIcon, onAction }: GroupRowProps) {
             <RouterLink to={`/group/${group.id.value}`} style={{ flex: 1 }}>
                 <HStack justify="space-between">
                     <Text fontWeight="medium">{group.name}</Text>
-                    <Badge colorPalette={group.status === 'open' ? 'blue' : 'gray'}>
+                    <Badge colorPalette={STATUS_COLORS[group.status]}>
                         {STATUS_LABELS[group.status]}
                     </Badge>
                 </HStack>

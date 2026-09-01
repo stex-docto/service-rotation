@@ -9,11 +9,15 @@ service cloud.firestore {
     // ---------------------------------------------------------------------
     // groups/{groupId}
     //
-    // Lifecycle: draft -> open, where 'open' means voting is enabled
-    // (services/rotations frozen) — it no longer gates membership. There is
-    // no third "computed" state and no stored result any more — results are
-    // always computed live, locally, by whoever can currently read enough
-    // votes (see votes/{uid} below and README's security model). Membership
+    // Lifecycle: draft -> open -> done. 'open' means voting is enabled
+    // (services/rotations frozen) — it no longer gates membership. 'done' is
+    // set by the creator once every current member's vote is locked (see
+    // FinishGroupUseCase; this file cannot verify that itself, see clause
+    // (h)) and changes nothing else — reading votes, computing a result, and
+    // banning a member all behave exactly the same as in 'open'. There is
+    // still no stored result — results are always computed live, locally, by
+    // whoever can currently read enough votes (see votes/{uid} below and
+    // README's security model). Membership
     // is fully self-service and email-free, and independent of status: the
     // group's own id (crypto.randomUUID(), unguessable, and groups are never
     // listable by non-members) is the invite capability from the moment the
@@ -268,6 +272,29 @@ service cloud.firestore {
           && request.resource.data.bannedUids.size() == existingBannedUids().size() - 1
           && request.resource.data.bannedUids.removeAll(existingBannedUids()).size() == 0
           && request.resource.data.bannedMembers.size() == existingBannedMembers().size() - 1
+          && request.resource.data.allowRepeatedServices == existingAllowRepeatedServices()
+          && request.resource.data.pastShiftsEnabled == existingPastShiftsEnabled()
+          && request.resource.data.shiftHistory == existingShiftHistory()
+        )
+        ||
+        // (h) Creator marks voting as finished: 'open' -> 'done', status
+        // only. Rules can't check that every member's vote is actually
+        // locked (no loop over an arbitrary member count, no per-doc get()
+        // budget for that) — FinishGroupUseCase is what actually enforces
+        // it; this clause only pins every other field unchanged, same
+        // pattern as (a)-(g). inviteOpen isn't in the pinned list because
+        // it's already false from open() and stays false — see (b) and the
+        // absence of any 'done'-state reopen path.
+        (
+          resource.data.status == 'open'
+          && request.auth.uid == resource.data.createdBy
+          && request.resource.data.status == 'done'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+               ['status', 'allowRepeatedServices', 'bannedMembers', 'bannedUids',
+                'pastShiftsEnabled', 'shiftHistory']
+             )
+          && request.resource.data.bannedUids == existingBannedUids()
+          && request.resource.data.bannedMembers.size() == existingBannedMembers().size()
           && request.resource.data.allowRepeatedServices == existingAllowRepeatedServices()
           && request.resource.data.pastShiftsEnabled == existingPastShiftsEnabled()
           && request.resource.data.shiftHistory == existingShiftHistory()

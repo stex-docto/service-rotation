@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Box, Button, Heading, Progress, Text, VStack } from '@chakra-ui/react'
+import { useEffect, useRef, useState } from 'react'
+import { Badge, Box, Button, Heading, HStack, Progress, Text, VStack } from '@chakra-ui/react'
 import { CurrentUser, GroupEntity, VoteEntity } from '@domain'
 import { ComputeResultResult } from '@application'
 import { useDependencies } from '@presentation/hooks/useDependencies'
@@ -17,7 +17,8 @@ interface OpenViewProps {
 }
 
 export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
-    const { getMyVoteUseCase, getVotingProgressUseCase, computeResultUseCase } = useDependencies()
+    const { getMyVoteUseCase, getVotingProgressUseCase, computeResultUseCase, finishGroupUseCase } =
+        useDependencies()
 
     const isMember = group.isMember(currentUser.id)
 
@@ -33,6 +34,11 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
     const [computing, setComputing] = useState(false)
 
     const [error, setError] = useState<string | null>(null)
+
+    // A ref, not state: this must not itself trigger a re-render/re-run of
+    // the effect below, or a failed write (e.g. clause (h) not yet deployed)
+    // becomes an unbounded retry loop — see the effect's own comment.
+    const finishAttempted = useRef(false)
 
     useEffect(() => {
         if (!isMember) return
@@ -83,10 +89,38 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [myVote?.locked, progress.lockedCount, progress.totalMembers])
 
+    // There's no Cloud Function to flip the group to 'done' the moment the
+    // last vote locks — the creator's own client has to write it, so this
+    // only actually happens once the creator next has the group page open.
+    // At most one attempt per mount (the ref, not state, so a failed write
+    // can't re-trigger this same effect run) — a failed write (e.g. permission
+    // denied while firestore.rules clause (h) isn't deployed yet) just leaves
+    // the group 'open' until the creator's next visit re-attempts it, rather
+    // than retrying in a tight loop against a rule that keeps rejecting it.
+    useEffect(() => {
+        if (!isCreator || group.status !== 'open' || finishAttempted.current) return
+        if (progress.totalMembers === 0 || progress.lockedCount !== progress.totalMembers) return
+        finishAttempted.current = true
+        finishGroupUseCase.execute({ groupId: group.id }).catch(() => {
+            // Best-effort, like the progress read above — see the comment
+            // on this effect for why this must not retry on its own.
+        })
+    }, [
+        isCreator,
+        group.status,
+        group.id,
+        finishGroupUseCase,
+        progress.lockedCount,
+        progress.totalMembers
+    ])
+
     return (
         <VStack gap={6} align="stretch">
             <Box>
-                <Heading size="lg">{group.name}</Heading>
+                <HStack>
+                    <Heading size="lg">{group.name}</Heading>
+                    {group.status === 'done' && <Badge colorPalette="green">Terminé</Badge>}
+                </HStack>
                 <Text colorPalette="gray">
                     {progress.lockedCount} / {progress.totalMembers} membres ont verrouillé leurs
                     notes.
