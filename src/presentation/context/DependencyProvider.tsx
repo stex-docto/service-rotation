@@ -21,6 +21,7 @@ import {
     RemoveServiceUseCase,
     SaveVoteDraftUseCase,
     SetGroupHiddenUseCase,
+    SetMemberShiftHistoryUseCase,
     SetRotationModeUseCase,
     SignInUseCase,
     UnbanMemberUseCase,
@@ -95,6 +96,10 @@ function initDependencies(): DependencyContext {
         userPreferencesRepository,
         signInUseCase
     )
+    const setMemberShiftHistoryUseCase = new SetMemberShiftHistoryUseCase(
+        groupRepository,
+        signInUseCase
+    )
 
     return {
         signInUseCase,
@@ -122,7 +127,8 @@ function initDependencies(): DependencyContext {
         getGroupUseCase,
         getMyVoteUseCase,
         getMyGroupsUseCase,
-        setGroupHiddenUseCase
+        setGroupHiddenUseCase,
+        setMemberShiftHistoryUseCase
     }
 }
 

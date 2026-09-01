@@ -132,7 +132,12 @@ export function OpenView({ group, isCreator, currentUser }: OpenViewProps) {
                     // refetching through loadingVote — that would flash the
                     // full-screen LoadingScreen (unmounting this form) on every
                     // autosave.
-                    <GradeSheetForm group={group} existingVote={myVote} onChanged={setMyVote} />
+                    <GradeSheetForm
+                        group={group}
+                        existingVote={myVote}
+                        currentUser={currentUser}
+                        onChanged={setMyVote}
+                    />
                 ))}
 
             {myVote?.locked && !computeResult && (

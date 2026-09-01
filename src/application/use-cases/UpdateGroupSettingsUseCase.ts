@@ -5,6 +5,7 @@ export interface UpdateGroupSettingsCommand {
     groupId: GroupId
     name?: string
     allowRepeatedServices?: boolean
+    pastShiftsEnabled?: boolean
 }
 
 export interface UpdateGroupSettingsResult {
@@ -30,7 +31,8 @@ export class UpdateGroupSettingsUseCase {
 
         const updatedGroup = group.updateSettings({
             name: command.name,
-            allowRepeatedServices: command.allowRepeatedServices
+            allowRepeatedServices: command.allowRepeatedServices,
+            pastShiftsEnabled: command.pastShiftsEnabled
         })
 
         await this.groupRepository.save(updatedGroup)
