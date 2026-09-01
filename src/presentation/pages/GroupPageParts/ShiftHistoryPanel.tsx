@@ -1,10 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
-import { Box, Button, Heading, NumberInput, Switch, Table, Text } from '@chakra-ui/react'
-import { CurrentUser, GroupEntity, UserId } from '@domain'
+import {
+    Box,
+    Button,
+    Dialog,
+    Heading,
+    NumberInput,
+    Portal,
+    Switch,
+    Table,
+    Text,
+    Textarea,
+    VStack
+} from '@chakra-ui/react'
+import { CurrentUser, GroupEntity, ShiftHistoryProposalEntity, UserId } from '@domain'
 import { MAX_MANUAL_SHIFT_HISTORY } from '@application'
 import { useDependencies } from '@presentation/hooks/useDependencies'
 import { ErrorMessage } from '@presentation/components/ErrorMessage'
 import { errorMessageFrom } from '@presentation/utils/errors'
+
+const PROPOSAL_STATUS_LABELS: Record<ShiftHistoryProposalEntity['status'], string> = {
+    pending: 'proposition en attente',
+    accepted: 'proposition acceptée',
+    rejected: 'proposition refusée'
+}
 
 const AUTOSAVE_DELAY_MS = 300
 
@@ -25,11 +43,33 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
         updateGroupSettingsUseCase,
         setMemberShiftHistoryUseCase,
         importShiftHistoryUseCase,
-        getGroupUseCase
+        getGroupUseCase,
+        getShiftHistoryProposalsUseCase,
+        proposeShiftHistoryChangeUseCase,
+        resolveShiftHistoryProposalUseCase
     } = useDependencies()
 
     const [enabled, setEnabled] = useState(group.pastShiftsEnabled)
     const [error, setError] = useState<string | null>(null)
+
+    // Every current member's proposal (pending or resolved), keyed by uid —
+    // the resolution trail is public to the whole group, not just the
+    // proposer and the creator. Reloaded after any propose/resolve action
+    // rather than kept in sync incrementally: this panel only shows while
+    // the group is a draft, where such edits are already infrequent,
+    // one-at-a-time actions.
+    const [proposals, setProposals] = useState<Map<string, ShiftHistoryProposalEntity>>(new Map())
+
+    function reloadProposals() {
+        getShiftHistoryProposalsUseCase
+            .execute({ groupId: group.id })
+            .then(result => setProposals(new Map(result.proposals.map(p => [p.userId.value, p]))))
+            .catch(() => {
+                // Best-effort — the grid/inbox below still works without it.
+            })
+    }
+
+    useEffect(reloadProposals, [group.id, getShiftHistoryProposalsUseCase])
 
     const [predecessorName, setPredecessorName] = useState<string | null>(null)
     const [importing, setImporting] = useState(false)
@@ -103,6 +143,66 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
             setError(errorMessageFrom(err))
         } finally {
             setImporting(false)
+        }
+    }
+
+    const [proposeOpen, setProposeOpen] = useState(false)
+    const [proposeCounts, setProposeCounts] = useState<Map<string, number>>(new Map())
+    const [proposeJustification, setProposeJustification] = useState('')
+    const [proposing, setProposing] = useState(false)
+    const [resolvingUserId, setResolvingUserId] = useState<string | null>(null)
+
+    function openProposeDialog() {
+        const own = group.getShiftHistoryFor(currentUser.id)
+        setProposeCounts(
+            new Map(services.map(service => [service.id.value, own.get(service.id.value) ?? 0]))
+        )
+        setProposeJustification('')
+        setProposeOpen(true)
+    }
+
+    async function submitProposal() {
+        setProposing(true)
+        setError(null)
+        try {
+            await proposeShiftHistoryChangeUseCase.execute({
+                groupId: group.id,
+                counts: proposeCounts,
+                justification: proposeJustification.trim() || null
+            })
+            setProposeOpen(false)
+            reloadProposals()
+        } catch (err) {
+            setError(errorMessageFrom(err))
+        } finally {
+            setProposing(false)
+        }
+    }
+
+    async function resolveProposal(userId: string, decision: 'accepted' | 'rejected') {
+        setResolvingUserId(userId)
+        setError(null)
+        try {
+            const result = await resolveShiftHistoryProposalUseCase.execute({
+                groupId: group.id,
+                userId: UserId.from(userId),
+                decision
+            })
+            if (decision === 'accepted') {
+                const row = result.group.getShiftHistoryFor(UserId.from(userId))
+                setCounts(previous => {
+                    const next = new Map(previous)
+                    for (const service of services) {
+                        next.set(`${userId}:${service.id.value}`, row.get(service.id.value) ?? 0)
+                    }
+                    return next
+                })
+            }
+            reloadProposals()
+        } catch (err) {
+            setError(errorMessageFrom(err))
+        } finally {
+            setResolvingUserId(null)
         }
     }
 
@@ -181,6 +281,67 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
                 </Box>
             )}
 
+            {isCreator && showGrid && (
+                <Box mb={4}>
+                    {[...proposals.values()]
+                        .filter(p => p.status === 'pending')
+                        .map(p => (
+                            <Box
+                                key={p.userId.value}
+                                borderWidth="1px"
+                                borderRadius="md"
+                                p={3}
+                                mb={2}
+                            >
+                                <Text fontSize="sm" fontWeight="medium">
+                                    {members.find(m => m.userId.equals(p.userId))?.displayName ??
+                                        p.userId.value}{' '}
+                                    propose une correction
+                                </Text>
+                                <Text fontSize="xs" colorPalette="gray" mb={2}>
+                                    {services
+                                        .map(
+                                            service =>
+                                                `${service.name}: ${p.counts.get(service.id.value) ?? 0}`
+                                        )
+                                        .join(' · ')}
+                                    {p.justification ? ` — « ${p.justification} »` : ''}
+                                </Text>
+                                <Button
+                                    size="xs"
+                                    colorPalette="green"
+                                    mr={2}
+                                    loading={resolvingUserId === p.userId.value}
+                                    onClick={() => resolveProposal(p.userId.value, 'accepted')}
+                                >
+                                    Accepter
+                                </Button>
+                                <Button
+                                    size="xs"
+                                    variant="outline"
+                                    loading={resolvingUserId === p.userId.value}
+                                    onClick={() => resolveProposal(p.userId.value, 'rejected')}
+                                >
+                                    Refuser
+                                </Button>
+                            </Box>
+                        ))}
+                </Box>
+            )}
+
+            {!isCreator && showGrid && (
+                <Box mb={4}>
+                    <Button size="sm" variant="outline" onClick={openProposeDialog}>
+                        Proposer une correction pour mes stages
+                    </Button>
+                    {proposals.get(currentUser.id.value) && (
+                        <Text fontSize="xs" colorPalette="gray" mt={1}>
+                            {PROPOSAL_STATUS_LABELS[proposals.get(currentUser.id.value)!.status]}
+                        </Text>
+                    )}
+                </Box>
+            )}
+
             <ErrorMessage message={error} />
 
             {showGrid &&
@@ -209,6 +370,24 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
                                         <Table.Row key={member.userId.value}>
                                             <Table.Cell fontWeight={isMe ? 'bold' : 'medium'}>
                                                 {member.displayName}
+                                                {proposals.get(member.userId.value) && (
+                                                    <Text
+                                                        as="span"
+                                                        fontSize="xs"
+                                                        colorPalette="gray"
+                                                        fontWeight="normal"
+                                                    >
+                                                        {' '}
+                                                        (
+                                                        {
+                                                            PROPOSAL_STATUS_LABELS[
+                                                                proposals.get(member.userId.value)!
+                                                                    .status
+                                                            ]
+                                                        }
+                                                        )
+                                                    </Text>
+                                                )}
                                             </Table.Cell>
                                             {services.map(service => {
                                                 const value = valueFor(
@@ -253,6 +432,74 @@ export function ShiftHistoryPanel({ group, isCreator, currentUser }: ShiftHistor
                         </Table.Root>
                     </Box>
                 ))}
+
+            <Dialog.Root open={proposeOpen} onOpenChange={details => setProposeOpen(details.open)}>
+                <Portal>
+                    <Dialog.Backdrop />
+                    <Dialog.Positioner>
+                        <Dialog.Content>
+                            <Dialog.Header>
+                                <Dialog.Title>Proposer une correction</Dialog.Title>
+                            </Dialog.Header>
+                            <Dialog.Body>
+                                <VStack gap={3} align="stretch">
+                                    {services.map(service => (
+                                        <Box key={service.id.value}>
+                                            <Text fontSize="sm" mb={1}>
+                                                {service.name || '(sans nom)'}
+                                            </Text>
+                                            <NumberInput.Root
+                                                size="sm"
+                                                min={0}
+                                                max={MAX_MANUAL_SHIFT_HISTORY}
+                                                value={String(
+                                                    proposeCounts.get(service.id.value) ?? 0
+                                                )}
+                                                onValueChange={details =>
+                                                    setProposeCounts(previous => {
+                                                        const next = new Map(previous)
+                                                        next.set(
+                                                            service.id.value,
+                                                            Number(details.value) || 0
+                                                        )
+                                                        return next
+                                                    })
+                                                }
+                                            >
+                                                <NumberInput.Input />
+                                            </NumberInput.Root>
+                                        </Box>
+                                    ))}
+                                    <Box>
+                                        <Text fontSize="sm" mb={1}>
+                                            Justification (optionnel)
+                                        </Text>
+                                        <Textarea
+                                            value={proposeJustification}
+                                            onChange={event =>
+                                                setProposeJustification(event.target.value)
+                                            }
+                                            size="sm"
+                                        />
+                                    </Box>
+                                </VStack>
+                            </Dialog.Body>
+                            <Dialog.Footer>
+                                <Button variant="outline" onClick={() => setProposeOpen(false)}>
+                                    Annuler
+                                </Button>
+                                <Button
+                                    colorPalette="blue"
+                                    loading={proposing}
+                                    onClick={submitProposal}
+                                >
+                                    Envoyer
+                                </Button>
+                            </Dialog.Footer>
+                        </Dialog.Content>
+                    </Dialog.Positioner>
+                </Portal>
+            </Dialog.Root>
         </Box>
     )
 }

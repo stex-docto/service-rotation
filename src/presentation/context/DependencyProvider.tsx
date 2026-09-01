@@ -1,5 +1,11 @@
 import React, { useState } from 'react'
-import { GroupRepository, UserPreferencesRepository, UserRepository, VoteRepository } from '@domain'
+import {
+    GroupRepository,
+    ShiftHistoryProposalRepository,
+    UserPreferencesRepository,
+    UserRepository,
+    VoteRepository
+} from '@domain'
 import {
     AddRotationSlotUseCase,
     AddServiceUseCase,
@@ -11,15 +17,18 @@ import {
     GetGroupUseCase,
     GetMyGroupsUseCase,
     GetMyVoteUseCase,
+    GetShiftHistoryProposalsUseCase,
     GetVotingProgressUseCase,
     ImportShiftHistoryUseCase,
     JoinGroupUseCase,
     LeaveGroupUseCase,
     LockVoteUseCase,
     OpenGroupUseCase,
+    ProposeShiftHistoryChangeUseCase,
     RemoveRotationSlotUseCase,
     ReopenInviteUseCase,
     RemoveServiceUseCase,
+    ResolveShiftHistoryProposalUseCase,
     SaveVoteDraftUseCase,
     SetGroupHiddenUseCase,
     SetMemberShiftHistoryUseCase,
@@ -32,6 +41,7 @@ import {
 } from '@application'
 import { FirebaseGroupDatastore } from '@infrastructure/datastores/FirebaseGroupDatastore'
 import { FirebaseVoteDatastore } from '@infrastructure/datastores/FirebaseVoteDatastore'
+import { FirebaseShiftHistoryProposalDatastore } from '@infrastructure/datastores/FirebaseShiftHistoryProposalDatastore'
 import { FirebaseUserPreferencesDatastore } from '@infrastructure/datastores/FirebaseUserPreferencesDatastore'
 import { FirebaseUserDatastore } from '@infrastructure/datastores/FirebaseUserDatastore'
 import { Firebase } from '@infrastructure/firebase'
@@ -52,6 +62,8 @@ function initDependencies(): DependencyContext {
     const voteRepository: VoteRepository = new FirebaseVoteDatastore(firebase.firestore)
     const userPreferencesRepository: UserPreferencesRepository =
         new FirebaseUserPreferencesDatastore(firebase.firestore)
+    const shiftHistoryProposalRepository: ShiftHistoryProposalRepository =
+        new FirebaseShiftHistoryProposalDatastore(firebase.firestore)
 
     const signInUseCase = new SignInUseCase(userRepository)
     const createGroupUseCase = new CreateGroupUseCase(groupRepository, signInUseCase)
@@ -106,6 +118,20 @@ function initDependencies(): DependencyContext {
         voteRepository,
         signInUseCase
     )
+    const proposeShiftHistoryChangeUseCase = new ProposeShiftHistoryChangeUseCase(
+        groupRepository,
+        shiftHistoryProposalRepository,
+        signInUseCase
+    )
+    const resolveShiftHistoryProposalUseCase = new ResolveShiftHistoryProposalUseCase(
+        groupRepository,
+        shiftHistoryProposalRepository,
+        signInUseCase
+    )
+    const getShiftHistoryProposalsUseCase = new GetShiftHistoryProposalsUseCase(
+        groupRepository,
+        shiftHistoryProposalRepository
+    )
 
     return {
         signInUseCase,
@@ -135,7 +161,10 @@ function initDependencies(): DependencyContext {
         getMyGroupsUseCase,
         setGroupHiddenUseCase,
         setMemberShiftHistoryUseCase,
-        importShiftHistoryUseCase
+        importShiftHistoryUseCase,
+        proposeShiftHistoryChangeUseCase,
+        resolveShiftHistoryProposalUseCase,
+        getShiftHistoryProposalsUseCase
     }
 }
 

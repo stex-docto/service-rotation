@@ -65,7 +65,12 @@ assignment, not Gale-Shapley, despite the algorithmic lineage. See
   counts each continuing member's assignments per service name, and
   falls back to a zero row for anyone it can't match (new members, or
   anyone whose predecessor vote isn't readable). Re-running it simply
-  overwrites the previous import with a fresh one.
+  overwrites the previous import with a fresh one. Any member who spots a
+  wrong number (whether it was imported or typed in by hand) can propose a
+  correction to their own row; the organizer accepts or rejects it, and
+  both the proposal and its resolution stay visible to the whole group —
+  the same transparency the numbers themselves get, applied to disputes
+  about them too.
 
 ## Mechanism
 
