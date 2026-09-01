@@ -115,7 +115,20 @@ throwaway stress script (see git history / session notes) hammering hundreds
 of random instances before trusting a change — this code has already had two
 subtle bugs (a Set-based padding step that silently dropped multi-edges, and
 an unbounded tie-break scale) that only a large random sweep caught, not the
-committed unit tests alone.
+committed unit tests alone. This applies just as much to
+`src/application/matchingInputs.ts` and `src/domain/matching/weightedCost.ts`
+even though they don't touch `assign.ts` itself — a wrong weighted cost fed
+into an untouched, correct engine still produces a wrong, silently-skewed
+distribution.
+
+`Group` now carries continuation-group fields alongside
+`allowRepeatedServices`: `predecessorGroupId` (immutable provenance, set only
+at creation by `CreateGroupUseCase`), `pastShiftsEnabled` (draft-only
+setting), and `shiftHistory` (uid → serviceId → count, organizer-owned —
+deliberately not a member's own self-reported field; see README's honesty
+argument for why). A member's counter-proposal to their own row lives in the
+separate `groups/{groupId}/shiftHistoryProposals/{uid}` subcollection, not on
+`Group` itself, mirroring the existing `votes`/`voteStatus` split.
 
 ## Firestore rules
 
